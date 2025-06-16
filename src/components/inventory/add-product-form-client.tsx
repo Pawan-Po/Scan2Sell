@@ -17,7 +17,7 @@ import { addProductToInventory } from '@/data/mock-data';
 import type { ProductFormData, Product } from '@/lib/types';
 import { fileToDataUri } from '@/lib/utils';
 import Image from 'next/image';
-import { UploadCloud, Wand2, Save, RotateCcw, Camera, ScanLine, Sparkles } from 'lucide-react';
+import { Wand2, Save, RotateCcw, Camera, Sparkles, AlertTriangle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
@@ -52,7 +52,7 @@ export function AddProductFormClient() {
     setValue,
     watch,
     reset,
-    control,
+    // control, // control was not used
     formState: { errors },
   } = useForm<ProductFormData>({
     resolver: zodResolver(productFormSchema),
@@ -74,9 +74,15 @@ export function AddProductFormClient() {
       fileToDataUri(file).then(dataUri => {
         setPreviewImage(dataUri);
         if (isCameraOpen) setIsCameraOpen(false); // Close camera if file is uploaded
-      }).catch(console.error);
+      }).catch(error => {
+        console.error('Error converting file to data URI:', error);
+        toast({ title: 'Image Error', description: 'Could not process the uploaded image.', variant: 'destructive' });
+      });
+    } else if (!isCameraOpen) {
+      // If file is cleared and camera not open, clear preview
+      // setPreviewImage(null); // This line might be too aggressive, let's test behavior.
     }
-  }, [productImageFile, isCameraOpen]);
+  }, [productImageFile, isCameraOpen, toast]);
 
   React.useEffect(() => {
     if (isCameraOpen) {
@@ -112,36 +118,16 @@ export function AddProductFormClient() {
     if (isCameraOpen) {
       setIsCameraOpen(false);
     } else {
-      setPreviewImage(null); // Clear file preview if opening camera
-      setValue('productLabelImage', undefined); // Clear file input
+      setPreviewImage(null); 
+      setValue('productLabelImage', undefined); 
       setIsCameraOpen(true);
     }
   };
 
-  const handleCaptureImage = () => {
-    if (videoRef.current && canvasRef.current) {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const context = canvas.getContext('2d');
-      if (context) {
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUri = canvas.toDataURL('image/png');
-        setPreviewImage(dataUri);
-        setIsCameraOpen(false); // Close camera after capture
-      }
-    }
-  };
-  
-  const handleExtractWithAI = async () => {
-    if (!previewImage) {
-      toast({ title: 'Image required', description: 'Please upload or capture a product label image.', variant: 'destructive' });
-      return;
-    }
+  const _triggerAiExtraction = async (imageDataUri: string) => {
     setIsAiExtracting(true);
     try {
-      const aiInput: ExtractProductInfoInput = { productLabelDataUri: previewImage };
+      const aiInput: ExtractProductInfoInput = { productLabelDataUri: imageDataUri };
       const result = await extractProductInfo(aiInput);
       
       if (result.productName) setValue('productName', result.productName);
@@ -162,6 +148,31 @@ export function AddProductFormClient() {
     } finally {
       setIsAiExtracting(false);
     }
+  };
+
+  const handleCaptureImage = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const context = canvas.getContext('2d');
+      if (context) {
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUri = canvas.toDataURL('image/png');
+        setPreviewImage(dataUri);
+        setIsCameraOpen(false); // Close camera after capture
+        _triggerAiExtraction(dataUri); // Automatically scan after capture
+      }
+    }
+  };
+  
+  const handleManualExtractWithAI = async () => {
+    if (!previewImage) {
+      toast({ title: 'Image required', description: 'Please upload or capture a product label image.', variant: 'destructive' });
+      return;
+    }
+    await _triggerAiExtraction(previewImage);
   };
 
   const handleEnhanceDescription = async () => {
@@ -194,6 +205,8 @@ export function AddProductFormClient() {
   const onSubmit = async (data: ProductFormData) => {
     setIsSaving(true);
     try {
+      // Ensure a category, default to "Uncategorized" if needed, or make it a required field.
+      // For now, it's optional in Product but could be useful for filtering.
       const newProductData: Omit<Product, 'id'> = {
         name: data.productName,
         price: data.price,
@@ -201,8 +214,9 @@ export function AddProductFormClient() {
         expiryDate: data.expiryDate,
         description: data.description,
         barcode: data.barcode,
-        imageUrl: previewImage || undefined,
-        lowStockThreshold: 5, 
+        imageUrl: previewImage || undefined, // Uses the preview image (captured or uploaded)
+        lowStockThreshold: 5, // Default low stock threshold
+        category: 'General', // Example default category
       };
       
       await addProductToInventory(newProductData);
@@ -245,9 +259,9 @@ export function AddProductFormClient() {
                 accept="image/*"
                 {...register('productLabelImage')}
                 className="flex-grow file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-                disabled={isCameraOpen}
+                disabled={isCameraOpen || isAiExtracting || isAiProcessing || isSaving}
               />
-              <Button type="button" variant="outline" onClick={handleToggleCamera}>
+              <Button type="button" variant="outline" onClick={handleToggleCamera} disabled={isAiExtracting || isAiProcessing || isSaving}>
                 <Camera className="mr-2 h-4 w-4" /> {isCameraOpen ? 'Close Camera' : 'Use Camera'}
               </Button>
             </div>
@@ -267,7 +281,7 @@ export function AddProductFormClient() {
                   </Alert>
               )}
               {hasCameraPermission && (
-                <Button type="button" onClick={handleCaptureImage} className="w-full">
+                <Button type="button" onClick={handleCaptureImage} className="w-full" disabled={isAiExtracting || isAiProcessing || isSaving}>
                   <Camera className="mr-2 h-4 w-4" /> Capture Image
                 </Button>
               )}
@@ -278,7 +292,7 @@ export function AddProductFormClient() {
           {previewImage && (
             <div className="mt-2 border rounded-md p-2 flex flex-col items-center bg-muted/50 space-y-2">
               <Image src={previewImage} alt="Product label preview" width={200} height={200} className="object-contain rounded-md max-h-[200px]" />
-              <Button type="button" variant="outline" size="sm" onClick={handleExtractWithAI} disabled={isAiExtracting || isAiProcessing || isSaving}>
+              <Button type="button" variant="outline" size="sm" onClick={handleManualExtractWithAI} disabled={isAiExtracting || isAiProcessing || isSaving}>
                 {isAiExtracting ? <RotateCcw className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
                 Scan Label with AI
               </Button>
@@ -287,14 +301,14 @@ export function AddProductFormClient() {
 
           <div className="space-y-2">
             <Label htmlFor="productName">Product Name</Label>
-            <Input id="productName" {...register('productName')} placeholder="e.g., Organic Apples" />
+            <Input id="productName" {...register('productName')} placeholder="e.g., Organic Apples" disabled={isAiExtracting}/>
             {errors.productName && <p className="text-sm text-destructive">{errors.productName.message}</p>}
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <Label htmlFor="price">Price</Label>
-              <Input id="price" type="number" step="0.01" {...register('price')} placeholder="0.00" />
+              <Input id="price" type="number" step="0.01" {...register('price')} placeholder="0.00" disabled={isAiExtracting}/>
               {errors.price && <p className="text-sm text-destructive">{errors.price.message}</p>}
             </div>
             <div className="space-y-2">
@@ -306,7 +320,7 @@ export function AddProductFormClient() {
           
           <div className="space-y-2">
             <Label htmlFor="barcode">Barcode (Optional)</Label>
-            <Input id="barcode" {...register('barcode')} placeholder="e.g., 123456789012" />
+            <Input id="barcode" {...register('barcode')} placeholder="e.g., 123456789012" disabled={isAiExtracting}/>
             {errors.barcode && <p className="text-sm text-destructive">{errors.barcode.message}</p>}
           </div>
 
@@ -319,12 +333,18 @@ export function AddProductFormClient() {
           <div className="space-y-2">
             <div className="flex justify-between items-center">
               <Label htmlFor="description">Product Description (Optional)</Label>
-              <Button type="button" variant="outline" size="sm" onClick={handleEnhanceDescription} disabled={isAiProcessing || isAiExtracting || !previewImage || !productNameWatch}>
+              <Button 
+                type="button" 
+                variant="outline" 
+                size="sm" 
+                onClick={handleEnhanceDescription} 
+                disabled={isAiProcessing || isAiExtracting || !previewImage || !productNameWatch || isSaving}
+              >
                 {isAiProcessing ? <RotateCcw className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
                 AI Enhance Desc.
               </Button>
             </div>
-            <Textarea id="description" {...register('description')} placeholder="Enter product description or use AI to populate." rows={4} />
+            <Textarea id="description" {...register('description')} placeholder="Enter product description or use AI to populate." rows={4} disabled={isAiExtracting}/>
             {errors.description && <p className="text-sm text-destructive">{errors.description.message}</p>}
           </div>
 
@@ -342,3 +362,6 @@ export function AddProductFormClient() {
     </Card>
   );
 }
+
+
+    
