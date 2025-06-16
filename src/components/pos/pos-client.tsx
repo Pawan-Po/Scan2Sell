@@ -22,12 +22,14 @@ import { ReceiptModal } from './receipt-modal';
 import Image from 'next/image';
 import { extractProductInfo, type ExtractProductInfoInput } from '@/ai/flows/extract-product-info-flow';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { fetchInventory } from '@/data/mock-data'; // Import fetchInventory
 
 interface POSClientProps {
-  inventory: Product[];
+  inventory: Product[]; // This will be the initial inventory from the server
 }
 
-export function POSClient({ inventory }: POSClientProps) {
+export function POSClient({ inventory: initialInventory }: POSClientProps) {
+  const [currentInventory, setCurrentInventory] = React.useState<Product[]>(initialInventory);
   const [cart, setCart] = React.useState<CartItem[]>([]);
   const [selectedProductId, setSelectedProductId] = React.useState<string | undefined>(undefined);
   const { toast } = useToast();
@@ -38,7 +40,18 @@ export function POSClient({ inventory }: POSClientProps) {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const [isAiScanning, setIsAiScanning] = React.useState(false);
-   const [scannedPreviewImage, setScannedPreviewImage] = React.useState<string | null>(null);
+  const [scannedPreviewImage, setScannedPreviewImage] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    // On client mount, fetch the latest inventory which might come from localStorage
+    async function loadClientInventory() {
+      const clientInventory = await fetchInventory();
+      setCurrentInventory(clientInventory);
+    }
+    if (typeof window !== 'undefined') { // Ensure this runs only on client
+      loadClientInventory();
+    }
+  }, []); // Empty dependency array: run once on mount
 
 
   React.useEffect(() => {
@@ -73,12 +86,12 @@ export function POSClient({ inventory }: POSClientProps) {
 
   const handleToggleCamera = () => {
     setIsCameraOpen(prev => !prev);
-    setScannedPreviewImage(null); // Clear previous scan preview
+    setScannedPreviewImage(null); 
   };
 
   const triggerAiScanAndMatch = async (imageDataUri: string) => {
     setIsAiScanning(true);
-    setScannedPreviewImage(imageDataUri); // Show what was scanned
+    setScannedPreviewImage(imageDataUri); 
 
     try {
       const aiInput: ExtractProductInfoInput = { productLabelDataUri: imageDataUri };
@@ -87,11 +100,10 @@ export function POSClient({ inventory }: POSClientProps) {
       let matchedProduct: Product | undefined = undefined;
 
       if (extractedInfo.barcode) {
-        matchedProduct = inventory.find(p => p.barcode === extractedInfo.barcode);
+        matchedProduct = currentInventory.find(p => p.barcode === extractedInfo.barcode);
       }
       if (!matchedProduct && extractedInfo.productName) {
-        // Basic name matching, could be improved with fuzzy search
-        matchedProduct = inventory.find(p => p.name.toLowerCase() === extractedInfo.productName!.toLowerCase());
+        matchedProduct = currentInventory.find(p => p.name.toLowerCase() === extractedInfo.productName!.toLowerCase());
       }
 
       if (matchedProduct) {
@@ -112,7 +124,7 @@ export function POSClient({ inventory }: POSClientProps) {
       toast({ title: 'AI Scan Error', description: 'Failed to process the image or match product.', variant: 'destructive' });
     } finally {
       setIsAiScanning(false);
-      setIsCameraOpen(false); // Close camera after scan attempt
+      setIsCameraOpen(false); 
     }
   };
 
@@ -137,7 +149,7 @@ export function POSClient({ inventory }: POSClientProps) {
       toast({ title: 'No Product Selected', description: 'Please select a product to add.', variant: 'destructive' });
       return;
     }
-    const productToAdd = inventory.find(p => p.id === selectedProductId);
+    const productToAdd = currentInventory.find(p => p.id === selectedProductId);
     if (!productToAdd) {
       toast({ title: 'Product Not Found', description: 'Selected product does not exist in inventory.', variant: 'destructive' });
       return;
@@ -163,12 +175,10 @@ export function POSClient({ inventory }: POSClientProps) {
         }
       }
     });
-    // Optionally reset select after adding, or keep it for quick multi-adds
-    // setSelectedProductId(undefined); 
   };
 
   const updateQuantity = (productId: string, newQuantity: number) => {
-    const productInInventory = inventory.find(p => p.id === productId);
+    const productInInventory = currentInventory.find(p => p.id === productId);
     if (!productInInventory) return;
 
     if (newQuantity <= 0) {
@@ -196,6 +206,8 @@ export function POSClient({ inventory }: POSClientProps) {
       toast({ title: 'Empty Cart', description: 'Please add items to your cart before checkout.', variant: 'destructive' });
       return;
     }
+    // Here you would typically process payment and update inventory on the backend
+    // For this mock version, we'll just show the receipt
     setIsReceiptModalOpen(true);
   };
 
@@ -224,7 +236,7 @@ export function POSClient({ inventory }: POSClientProps) {
                   <SelectValue placeholder="Scan or select a product..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {inventory.map(product => (
+                  {currentInventory.map(product => (
                     <SelectItem key={product.id} value={product.id} disabled={product.quantity === 0}>
                       {product.name} ({product.quantity} in stock) - ${product.price.toFixed(2)}
                     </SelectItem>
@@ -304,7 +316,7 @@ export function POSClient({ inventory }: POSClientProps) {
                           width={40}
                           height={40}
                           className="rounded-sm object-cover"
-                          data-ai-hint={item.imageUrl ? undefined : "product generic"}
+                          data-ai-hint={item.dataAiHint || (item.imageUrl ? undefined : "product generic")}
                         />
                       </TableCell>
                       <TableCell className="font-medium">{item.name}</TableCell>
@@ -323,11 +335,28 @@ export function POSClient({ inventory }: POSClientProps) {
                           <Input
                             type="number"
                             value={item.cartQuantity}
-                            onChange={(e) => updateQuantity(item.id, parseInt(e.target.value) || 0)}
+                            onChange={(e) => {
+                                const val = parseInt(e.target.value);
+                                const productInInv = currentInventory.find(p => p.id === item.id);
+                                if (productInInv && val > productInInv.quantity) {
+                                   toast({ title: 'Stock Limit Exceeded', description: `Only ${productInInv.quantity} units of ${productInInv.name} available.`, variant: 'destructive' });
+                                   updateQuantity(item.id, productInInv.quantity); // Set to max available
+                                } else {
+                                   updateQuantity(item.id, val || 0)
+                                }
+                            }}
+                            onBlur={(e) => { // Ensure quantity is not left empty or invalid
+                                if (item.cartQuantity === 0 && cart.find(ci => ci.id === item.id)) {
+                                    // If user blurs with 0, remove item or set to 1 if that's preferred. Here, removing.
+                                    // updateQuantity will handle removal if 0.
+                                } else if (isNaN(item.cartQuantity)) {
+                                    updateQuantity(item.id, 1); // Reset to 1 if invalid
+                                }
+                            }}
                             className="w-12 h-8 text-center px-1"
                             aria-label={`Quantity of ${item.name}`}
                             min="0"
-                            max={inventory.find(p=>p.id === item.id)?.quantity}
+                            max={currentInventory.find(p=>p.id === item.id)?.quantity}
                           />
                           <Button
                             variant="ghost"

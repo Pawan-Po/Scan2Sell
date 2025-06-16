@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -13,11 +14,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Card } from '@/components/ui/card'; // Added import for actual Card component
+import { Card } from '@/components/ui/card';
 import { Edit2, PackageSearch, Filter, AlertCircle } from 'lucide-react';
 import type { Product } from '@/lib/types';
 import Image from 'next/image';
 import { UpdateStockDialog } from './update-stock-dialog';
+import { fetchInventory } from '@/data/mock-data'; // Import fetchInventory
 
 interface InventoryListClientProps {
   initialProducts: Product[];
@@ -32,9 +34,21 @@ export function InventoryListClient({ initialProducts }: InventoryListClientProp
   const [selectedProductForUpdate, setSelectedProductForUpdate] = React.useState<Product | null>(null);
   const [isUpdateStockDialogOpen, setIsUpdateStockDialogOpen] = React.useState(false);
 
+  React.useEffect(() => {
+    // On client mount, fetch the latest inventory which might come from localStorage
+    // via our updated mock-data.ts
+    async function loadClientInventory() {
+      const clientInventory = await fetchInventory();
+      setProducts(clientInventory);
+    }
+    if (typeof window !== 'undefined') { // Ensure this runs only on client
+      loadClientInventory();
+    }
+  }, []); // Empty dependency array: run once on mount
+
   const categories = React.useMemo(() => 
-    ['all', ...new Set(initialProducts.map(p => p.category).filter(Boolean) as string[])],
-    [initialProducts]
+    ['all', ...new Set(products.map(p => p.category).filter(Boolean) as string[])],
+    [products] // Depend on products state which is updated from localStorage
   );
 
   const filteredProducts = React.useMemo(() => {
@@ -104,7 +118,7 @@ export function InventoryListClient({ initialProducts }: InventoryListClientProp
           <PackageSearch className="mx-auto h-12 w-12 text-muted-foreground" />
           <h3 className="mt-2 text-sm font-medium text-foreground">No products found</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Try adjusting your search or filter criteria.
+            Try adjusting your search or filter criteria, or add new products.
           </p>
         </div>
       ) : (
@@ -132,7 +146,7 @@ export function InventoryListClient({ initialProducts }: InventoryListClientProp
                       width={48}
                       height={48}
                       className="rounded-md object-cover"
-                      data-ai-hint={product.imageUrl ? undefined : "product generic"}
+                      data-ai-hint={product.dataAiHint || (product.imageUrl ? undefined : "product generic")}
                     />
                   </TableCell>
                   <TableCell className="font-medium">{product.name}</TableCell>
