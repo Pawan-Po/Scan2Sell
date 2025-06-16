@@ -1,6 +1,9 @@
+
 import type { Product } from '@/lib/types';
 
-export const mockInventory: Product[] = [
+// Note: The mockInventory is mutable and shared across requests in a dev server environment.
+// In a real application, this would be a database.
+export let mockInventory: Product[] = [
   {
     id: '1',
     name: 'Organic Apples',
@@ -71,7 +74,8 @@ export const mockInventory: Product[] = [
 export async function fetchInventory(): Promise<Product[]> {
   // Simulate API delay
   await new Promise(resolve => setTimeout(resolve, 500));
-  return mockInventory;
+  // Return a copy to avoid direct mutation effects outside mock data functions if needed by consumers
+  return JSON.parse(JSON.stringify(mockInventory));
 }
 
 // Simulate adding a product
@@ -79,11 +83,12 @@ export async function addProductToInventory(product: Omit<Product, 'id'>): Promi
   await new Promise(resolve => setTimeout(resolve, 300));
   const newProduct: Product = {
     ...product,
-    id: String(mockInventory.length + 1 + Math.random()), // simple id generation
+    id: String(mockInventory.length + 1 + Math.random().toString(36).substring(7)), // more unique id
   };
   mockInventory.push(newProduct);
   console.log('Added product:', newProduct);
-  return newProduct;
+  console.log('Current inventory size:', mockInventory.length);
+  return JSON.parse(JSON.stringify(newProduct));
 }
 
 // Simulate updating a product
@@ -91,9 +96,32 @@ export async function updateProductInInventory(updatedProduct: Product): Promise
   await new Promise(resolve => setTimeout(resolve, 300));
   const index = mockInventory.findIndex(p => p.id === updatedProduct.id);
   if (index !== -1) {
-    mockInventory[index] = updatedProduct;
-    console.log('Updated product:', updatedProduct);
-    return updatedProduct;
+    mockInventory[index] = { ...mockInventory[index], ...updatedProduct };
+    console.log('Updated product:', mockInventory[index]);
+    return JSON.parse(JSON.stringify(mockInventory[index]));
   }
+  console.error("Product not found for update, ID:", updatedProduct.id);
   throw new Error("Product not found for update");
+}
+
+// Function to reset mock inventory to its initial state (useful for testing or demo)
+export async function resetMockInventory(): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, 100));
+  mockInventory = [
+    {
+      id: '1',
+      name: 'Organic Apples',
+      price: 2.99,
+      quantity: 50,
+      expiryDate: '2024-12-31',
+      barcode: '123456789012',
+      description: 'Fresh, crisp organic apples. Perfect for snacking or baking.',
+      imageUrl: 'https://placehold.co/100x100.png',
+      dataAiHint: 'apples fruit',
+      lowStockThreshold: 10,
+      category: 'Fruits',
+    },
+    // ... (re-add other initial products if needed)
+  ];
+  console.log('Mock inventory reset.');
 }
