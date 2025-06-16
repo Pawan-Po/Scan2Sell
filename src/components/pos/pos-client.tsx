@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -14,11 +15,13 @@ import {
 } from '@/components/ui/table';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, MinusCircle, Trash2, ShoppingBag, CheckCircle, RotateCcw } from 'lucide-react';
+import { PlusCircle, MinusCircle, Trash2, ShoppingBag, CheckCircle, RotateCcw, Camera, Sparkles, AlertTriangle } from 'lucide-react';
 import type { Product, CartItem } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { ReceiptModal } from './receipt-modal';
 import Image from 'next/image';
+import { extractProductInfo, type ExtractProductInfoInput } from '@/ai/flows/extract-product-info-flow';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 interface POSClientProps {
   inventory: Product[];
@@ -29,6 +32,105 @@ export function POSClient({ inventory }: POSClientProps) {
   const [selectedProductId, setSelectedProductId] = React.useState<string | undefined>(undefined);
   const { toast } = useToast();
   const [isReceiptModalOpen, setIsReceiptModalOpen] = React.useState(false);
+
+  const [isCameraOpen, setIsCameraOpen] = React.useState(false);
+  const [hasCameraPermission, setHasCameraPermission] = React.useState<boolean | null>(null);
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  const [isAiScanning, setIsAiScanning] = React.useState(false);
+   const [scannedPreviewImage, setScannedPreviewImage] = React.useState<string | null>(null);
+
+
+  React.useEffect(() => {
+    if (isCameraOpen) {
+      const getCameraPermission = async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          setHasCameraPermission(true);
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+          }
+        } catch (error) {
+          console.error('Error accessing camera:', error);
+          setHasCameraPermission(false);
+          setIsCameraOpen(false);
+          toast({
+            variant: 'destructive',
+            title: 'Camera Access Denied',
+            description: 'Please enable camera permissions in your browser settings.',
+          });
+        }
+      };
+      getCameraPermission();
+    } else {
+      if (videoRef.current && videoRef.current.srcObject) {
+        const stream = videoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach(track => track.stop());
+        videoRef.current.srcObject = null;
+      }
+    }
+  }, [isCameraOpen, toast]);
+
+  const handleToggleCamera = () => {
+    setIsCameraOpen(prev => !prev);
+    setScannedPreviewImage(null); // Clear previous scan preview
+  };
+
+  const triggerAiScanAndMatch = async (imageDataUri: string) => {
+    setIsAiScanning(true);
+    setScannedPreviewImage(imageDataUri); // Show what was scanned
+
+    try {
+      const aiInput: ExtractProductInfoInput = { productLabelDataUri: imageDataUri };
+      const extractedInfo = await extractProductInfo(aiInput);
+
+      let matchedProduct: Product | undefined = undefined;
+
+      if (extractedInfo.barcode) {
+        matchedProduct = inventory.find(p => p.barcode === extractedInfo.barcode);
+      }
+      if (!matchedProduct && extractedInfo.productName) {
+        // Basic name matching, could be improved with fuzzy search
+        matchedProduct = inventory.find(p => p.name.toLowerCase() === extractedInfo.productName!.toLowerCase());
+      }
+
+      if (matchedProduct) {
+        setSelectedProductId(matchedProduct.id);
+        toast({
+          title: 'Product Found!',
+          description: `${matchedProduct.name} selected from scan.`,
+        });
+      } else {
+        toast({
+          title: 'Product Not Matched',
+          description: 'Could not find a matching product in inventory from the scan. Try manual selection.',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('AI scan and match failed:', error);
+      toast({ title: 'AI Scan Error', description: 'Failed to process the image or match product.', variant: 'destructive' });
+    } finally {
+      setIsAiScanning(false);
+      setIsCameraOpen(false); // Close camera after scan attempt
+    }
+  };
+
+  const handleCaptureImage = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const context = canvas.getContext('2d');
+      if (context) {
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUri = canvas.toDataURL('image/png');
+        triggerAiScanAndMatch(dataUri);
+      }
+    }
+  };
+
 
   const handleAddToCart = () => {
     if (!selectedProductId) {
@@ -61,7 +163,8 @@ export function POSClient({ inventory }: POSClientProps) {
         }
       }
     });
-    setSelectedProductId(undefined); // Reset select
+    // Optionally reset select after adding, or keep it for quick multi-adds
+    // setSelectedProductId(undefined); 
   };
 
   const updateQuantity = (productId: string, newQuantity: number) => {
@@ -93,14 +196,14 @@ export function POSClient({ inventory }: POSClientProps) {
       toast({ title: 'Empty Cart', description: 'Please add items to your cart before checkout.', variant: 'destructive' });
       return;
     }
-    // In a real app, this would trigger payment processing and inventory update.
-    // For now, just show receipt and clear cart.
     setIsReceiptModalOpen(true);
   };
 
   const handleNewSale = () => {
     setCart([]);
     setIsReceiptModalOpen(false);
+    setSelectedProductId(undefined);
+    setScannedPreviewImage(null);
     toast({ title: 'New Sale Started', description: 'Cart has been cleared.'});
   }
 
@@ -116,7 +219,7 @@ export function POSClient({ inventory }: POSClientProps) {
           <div className="flex flex-col sm:flex-row gap-4 items-end">
             <div className="flex-grow space-y-1">
               <Label htmlFor="product-select">Select Product</Label>
-              <Select value={selectedProductId} onValueChange={setSelectedProductId}>
+              <Select value={selectedProductId} onValueChange={setSelectedProductId} disabled={isCameraOpen || isAiScanning}>
                 <SelectTrigger id="product-select" aria-label="Select product">
                   <SelectValue placeholder="Scan or select a product..." />
                 </SelectTrigger>
@@ -129,19 +232,57 @@ export function POSClient({ inventory }: POSClientProps) {
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={handleAddToCart} className="w-full sm:w-auto" disabled={!selectedProductId}>
+            <Button onClick={handleToggleCamera} variant="outline" className="w-full sm:w-auto" disabled={isAiScanning}>
+              <Camera className="mr-2 h-4 w-4" /> {isCameraOpen ? 'Close Camera' : 'Scan Label'}
+            </Button>
+            <Button onClick={handleAddToCart} className="w-full sm:w-auto" disabled={!selectedProductId || isCameraOpen || isAiScanning}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add to Cart
             </Button>
           </div>
 
+          {isCameraOpen && (
+            <div className="space-y-2 border p-4 rounded-md bg-muted/20">
+              <video ref={videoRef} className="w-full aspect-video rounded-md bg-muted" autoPlay muted playsInline />
+              {hasCameraPermission === false && (
+                 <Alert variant="destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Camera Access Denied</AlertTitle>
+                    <AlertDescription>
+                      Please enable camera permissions in your browser settings.
+                    </AlertDescription>
+                  </Alert>
+              )}
+              {hasCameraPermission && (
+                <Button 
+                  type="button" 
+                  onClick={handleCaptureImage} 
+                  className="w-full" 
+                  disabled={isAiScanning}
+                >
+                  {isAiScanning ? <RotateCcw className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" /> }
+                  {isAiScanning ? 'Scanning...' : 'Capture & Scan Product'}
+                </Button>
+              )}
+            </div>
+          )}
+          <canvas ref={canvasRef} className="hidden" />
+
+          {scannedPreviewImage && !isCameraOpen && (
+             <div className="mt-2 border rounded-md p-2 flex flex-col items-center bg-muted/50 space-y-2">
+              <p className="text-sm text-muted-foreground">Last Scanned Image:</p>
+              <Image src={scannedPreviewImage} alt="Scanned product preview" width={150} height={150} className="object-contain rounded-md max-h-[150px]" />
+            </div>
+          )}
+
+
           {cart.length === 0 ? (
-            <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
+            <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg mt-4">
               <ShoppingBag className="mx-auto h-12 w-12 text-muted-foreground" />
               <h3 className="mt-2 text-sm font-medium">Your cart is empty</h3>
-              <p className="mt-1 text-sm text-muted-foreground">Add products using the selector above.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Add products using the selector or camera scan.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto mt-4">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -236,10 +377,10 @@ export function POSClient({ inventory }: POSClientProps) {
           </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-2">
-          <Button size="lg" className="w-full" onClick={handleCheckout} disabled={cart.length === 0}>
+          <Button size="lg" className="w-full" onClick={handleCheckout} disabled={cart.length === 0 || isCameraOpen || isAiScanning}>
             <CheckCircle className="mr-2 h-5 w-5" /> Checkout
           </Button>
-           <Button size="lg" variant="outline" className="w-full" onClick={handleNewSale}>
+           <Button size="lg" variant="outline" className="w-full" onClick={handleNewSale} disabled={isCameraOpen || isAiScanning}>
             <RotateCcw className="mr-2 h-5 w-5" /> New Sale
           </Button>
         </CardFooter>
