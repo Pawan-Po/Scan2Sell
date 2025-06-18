@@ -12,16 +12,16 @@ export function LoginForm() {
   const handleGoogleSignIn = async () => {
     try {
       const user = await signInWithGoogle();
-      if (user) {
-        toast({ title: 'Login Successful', description: `Welcome back, ${user.displayName || 'User'}!` });
-        router.push('/inventory'); // Or a dedicated dashboard page
-      } else {
-        // signInWithGoogle should ideally throw or return error details
-        toast({ title: 'Login Failed', description: 'Could not sign in with Google. Please try again.', variant: 'destructive' });
-      }
+      // If signInWithGoogle is successful, user should be defined.
+      toast({ title: 'Login Successful', description: `Welcome back, ${user.displayName || 'User'}!` });
+      router.push('/inventory'); // Or a dedicated dashboard page
     } catch (error) {
-      console.error("Google Sign-In Error:", error);
-      toast({ title: 'Login Error', description: 'An unexpected error occurred during sign-in.', variant: 'destructive' });
+      console.error("Google Sign-In Error Object:", error);
+      let errorMessage = 'Could not sign in with Google. Please check console or Firebase setup.';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      toast({ title: 'Login Failed', description: errorMessage, variant: 'destructive' });
     }
   };
 
