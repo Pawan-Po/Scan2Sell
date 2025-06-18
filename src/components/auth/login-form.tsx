@@ -17,9 +17,9 @@ export function LoginForm() {
       router.push('/inventory'); // Or a dedicated dashboard page
     } catch (error) {
       console.error("Google Sign-In Error Object:", error);
-      let errorMessage = 'Could not sign in with Google. Please check console or Firebase setup.';
+      let errorMessage = 'Could not sign in with Google. Please try again or check your Firebase setup.'; // More informative default
       if (error instanceof Error) {
-        errorMessage = error.message;
+        errorMessage = error.message; // This will now get the more specific message from auth.ts
       }
       toast({ title: 'Login Failed', description: errorMessage, variant: 'destructive' });
     }
