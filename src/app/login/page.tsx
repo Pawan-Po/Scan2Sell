@@ -1,2 +1,7 @@
-// This file is intentionally left blank as it's marked for deletion.
-// If you see this, the build process should have removed this file.
+'use client';
+
+// This page is not currently in use.
+// It's a placeholder to prevent build errors.
+export default function LoginPage() {
+  return null;
+}
