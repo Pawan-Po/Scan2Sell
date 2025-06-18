@@ -1,38 +1,38 @@
-'use client'; // Marking as client component for auth check
+'use client';
 
 import * as React from 'react';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertTriangle } from 'lucide-react';
-import { useAuth } from '@/hooks/use-auth';
-import { useRouter } from 'next/navigation';
-import { Skeleton } from '@/components/ui/skeleton';
+// import { useAuth } from '@/hooks/use-auth'; // Auth removed
+// import { useRouter } from 'next/navigation';
+// import { Skeleton } from '@/components/ui/skeleton';
 
 
-// export const metadata = { // Static metadata
+// export const metadata = {
 //   title: 'Alerts | Scan2Sale',
 // };
 
 export default function AlertsPage() {
-  const { user, loading } = useAuth();
-  const router = useRouter();
+  // const { user, loading } = useAuth(); // Auth removed
+  // const router = useRouter();
 
-  React.useEffect(() => {
-    if (!loading && !user) {
-      router.replace('/login?redirect=/alerts');
-    }
-  }, [user, loading, router]);
+  // React.useEffect(() => { // Auth removed
+  //   if (!loading && !user) {
+  //     router.replace('/login?redirect=/alerts'); // Login page removed
+  //   }
+  // }, [user, loading, router]);
 
-  if (loading || !user) {
-    return (
-      <AppLayout>
-        <div className="flex items-center justify-between mb-6">
-           <Skeleton className="h-9 w-32" />
-        </div>
-        <Skeleton className="h-48 w-full" />
-      </AppLayout>
-    );
-  }
+  // if (loading || !user) { // Auth removed, no loading state needed here
+  //   return (
+  //     <AppLayout>
+  //       <div className="flex items-center justify-between mb-6">
+  //          <Skeleton className="h-9 w-32" />
+  //       </div>
+  //       <Skeleton className="h-48 w-full" />
+  //     </AppLayout>
+  //   );
+  // }
 
   return (
     <AppLayout>

@@ -2,24 +2,19 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/hooks/use-auth';
-import { Skeleton } from '@/components/ui/skeleton'; // Assuming you have a Skeleton component
+// import { useAuth } from '@/hooks/use-auth'; // Auth removed for now
+// import { Skeleton } from '@/components/ui/skeleton';
 
 export default function HomePage() {
   const router = useRouter();
-  const { user, loading } = useAuth();
+  // const { user, loading } = useAuth(); // Auth removed for now
 
   useEffect(() => {
-    if (!loading) {
-      if (user) {
-        router.replace('/inventory'); // User is logged in, go to main app page
-      } else {
-        router.replace('/login'); // User is not logged in, go to login page
-      }
-    }
-  }, [user, loading, router]);
+    // Since auth is removed, redirect directly to inventory
+    router.replace('/inventory');
+  }, [router]);
 
-  // Show a loading state while determining auth status and redirecting
+  // Show a loading state while redirecting
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <div className="flex flex-col items-center space-y-4">

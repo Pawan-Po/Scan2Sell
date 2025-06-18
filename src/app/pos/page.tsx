@@ -1,44 +1,43 @@
-'use client'; // Marking as client component for auth check
+'use client';
 
 import * as React from 'react';
 import { AppLayout } from '@/components/layout/app-layout';
 import { POSClient } from '@/components/pos/pos-client';
 import { fetchInventory } from '@/data/mock-data';
-import { useAuth } from '@/hooks/use-auth';
-import { useRouter } from 'next/navigation';
+// import { useAuth } from '@/hooks/use-auth'; // Auth removed
+// import { useRouter } from 'next/navigation';
 import { Skeleton } from '@/components/ui/skeleton';
 
-// export const metadata = { // Static metadata
+// export const metadata = {
 //   title: 'Point of Sale | Scan2Sale',
 // };
 
 export default function POSPage() {
-  const { user, loading: authLoading } = useAuth();
-  const router = useRouter();
+  // const { user, loading: authLoading } = useAuth(); // Auth removed
+  // const router = useRouter(); // Auth removed
   const [inventory, setInventory] = React.useState<Awaited<ReturnType<typeof fetchInventory>> | null>(null);
   const [dataLoading, setDataLoading] = React.useState(true);
 
 
-  React.useEffect(() => {
-    if (!authLoading && !user) {
-      router.replace('/login?redirect=/pos');
-    }
-  }, [user, authLoading, router]);
+  // React.useEffect(() => { // Auth removed
+  //   if (!authLoading && !user) {
+  //     router.replace('/login?redirect=/pos'); // Login page removed
+  //   }
+  // }, [user, authLoading, router]);
 
   React.useEffect(() => {
-    if (user) { // Only fetch data if user is authenticated
-      const loadData = async () => {
-        setDataLoading(true);
-        const fetchedInventory = await fetchInventory();
-        setInventory(fetchedInventory);
-        setDataLoading(false);
-      };
-      loadData();
-    }
-  }, [user]);
+    // Always fetch data as auth is removed
+    const loadData = async () => {
+      setDataLoading(true);
+      const fetchedInventory = await fetchInventory();
+      setInventory(fetchedInventory);
+      setDataLoading(false);
+    };
+    loadData();
+  }, []);
 
 
-  if (authLoading || !user || dataLoading) {
+  if (dataLoading) { // Keep data loading skeleton, authLoading removed
     return (
       <AppLayout>
         <div className="flex items-center justify-between mb-6">
@@ -66,7 +65,7 @@ export default function POSPage() {
       {inventory ? (
         <POSClient inventory={inventory} />
       ) : (
-        <p>Loading inventory for POS...</p> // Should be covered by skeleton, but as fallback
+        <p>Loading inventory for POS...</p>
       )}
     </AppLayout>
   );
