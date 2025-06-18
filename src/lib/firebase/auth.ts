@@ -14,22 +14,22 @@ const googleProvider = new GoogleAuthProvider();
 
 export const signInWithGoogle = async (): Promise<User> => {
   try {
+    // Diagnostic log
+    console.log(
+      `Attempting Google Sign-In for Firebase app: ${auth.app.name} from domain: ${window.location.origin}`
+    );
     const result = await signInWithPopup(auth, googleProvider);
     if (!result.user) {
-      // This case should ideally not be reached if signInWithPopup resolves successfully
-      // and doesn't throw, but as a safeguard.
       throw new Error('Firebase sign-in successful but no user object was returned.');
     }
     return result.user;
   } catch (error) {
     console.error('Error signing in with Google:', error);
-    // Re-throw the error to be caught by the calling component.
-    // Firebase errors often have a 'code' and 'message' property.
-    // If it's a standard Error, its message will be used.
-    // If it's a Firebase specific error, its message might be more informative.
     if (error instanceof Error) {
-      // You could check for specific Firebase error codes here if needed
-      // e.g., if (error.code === 'auth/popup-closed-by-user') { ... }
+      // Check if it's a FirebaseError with a code property
+      if ('code' in error && typeof (error as any).code === 'string') {
+        throw new Error((error as any).message || 'An unknown Firebase error occurred during Google Sign-In.');
+      }
       throw new Error(error.message || 'An unknown error occurred during Google Sign-In.');
     }
     throw new Error('An unexpected error occurred during Google Sign-In.');
