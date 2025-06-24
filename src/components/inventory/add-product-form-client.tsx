@@ -16,6 +16,7 @@ import { extractBarcode, type ExtractBarcodeInput } from '@/ai/flows/extract-bar
 import { addProductToInventory } from '@/data/mock-data';
 import type { ProductFormData, Product } from '@/lib/types';
 import { fileToDataUri } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { Wand2, Save, RotateCcw, Camera, AlertTriangle, Barcode } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -42,8 +43,10 @@ export function AddProductFormClient() {
 
   const [hasCameraPermission, setHasCameraPermission] = React.useState<boolean | null>(null);
   const [isCameraOpen, setIsCameraOpen] = React.useState(false);
+  
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  const streamRef = React.useRef<MediaStream | null>(null);
 
 
   const {
@@ -70,52 +73,52 @@ export function AddProductFormClient() {
   React.useEffect(() => {
     if (productImageFile && productImageFile.length > 0) {
       const file = productImageFile[0];
+      let isCancelled = false;
       fileToDataUri(file).then(dataUri => {
-        setPreviewImage(dataUri);
-        if (isCameraOpen) setIsCameraOpen(false); // Close camera if file is uploaded
+        if (!isCancelled) {
+          setPreviewImage(dataUri);
+          if (isCameraOpen) setIsCameraOpen(false); // Close camera if file is uploaded
+        }
       }).catch(error => {
-        console.error('Error converting file to data URI:', error);
-        toast({ title: 'Image Error', description: 'Could not process the uploaded image.', variant: 'destructive' });
+        if (!isCancelled) {
+          console.error('Error converting file to data URI:', error);
+          toast({ title: 'Image Error', description: 'Could not process the uploaded image.', variant: 'destructive' });
+        }
       });
-    } else if (!isCameraOpen) {
-      // This branch is intentionally left blank.
-      // Clearing previewImage is handled by specific user actions (reset, toggle camera).
+      return () => { isCancelled = true; };
     }
   }, [productImageFile, isCameraOpen, toast]);
 
   React.useEffect(() => {
-    let stream: MediaStream | null = null;
-    if (isCameraOpen) {
-      const getCameraPermission = async () => {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-          setHasCameraPermission(true);
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-          }
-        } catch (error) {
-          console.error('Error accessing camera:', error);
-          setHasCameraPermission(false);
-          setIsCameraOpen(false);
-          toast({
-            variant: 'destructive',
-            title: 'Camera Access Denied',
-            description: 'Please enable camera permissions in your browser settings.',
-          });
+    const getCameraPermission = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        streamRef.current = stream; // Store stream in ref
+        setHasCameraPermission(true);
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
         }
-      };
+      } catch (error) {
+        console.error('Error accessing camera:', error);
+        setHasCameraPermission(false);
+        setIsCameraOpen(false);
+        toast({
+          variant: 'destructive',
+          title: 'Camera Access Denied',
+          description: 'Please enable camera permissions in your browser settings.',
+        });
+      }
+    };
+    
+    if (isCameraOpen) {
       getCameraPermission();
     }
     
     return () => {
         // Cleanup function to stop video stream
-        if (stream) {
-           stream.getTracks().forEach(track => track.stop());
-        }
-        if(videoRef.current && videoRef.current.srcObject){
-            const mediaStream = videoRef.current.srcObject as MediaStream;
-            mediaStream.getTracks().forEach(track => track.stop());
-            videoRef.current.srcObject = null;
+        if (streamRef.current) {
+           streamRef.current.getTracks().forEach(track => track.stop());
+           streamRef.current = null;
         }
     };
   }, [isCameraOpen, toast]);
@@ -126,6 +129,7 @@ export function AddProductFormClient() {
     } else {
       setPreviewImage(null); 
       setValue('productLabelImage', undefined); 
+      setHasCameraPermission(null); // Reset permission status
       setIsCameraOpen(true);
     }
   };
@@ -267,8 +271,7 @@ export function AddProductFormClient() {
             {errors.productLabelImage && <p className="text-sm text-destructive">{errors.productLabelImage.message?.toString()}</p>}
           </div>
 
-          {isCameraOpen && (
-            <div className="space-y-2">
+          <div className={cn("space-y-2", isCameraOpen ? 'block' : 'hidden')}>
               <video ref={videoRef} className="w-full aspect-video rounded-md bg-muted" autoPlay muted playsInline />
               {hasCameraPermission === false && (
                  <Alert variant="destructive">
@@ -279,13 +282,12 @@ export function AddProductFormClient() {
                     </AlertDescription>
                   </Alert>
               )}
-              {hasCameraPermission && (
+              {hasCameraPermission === true && (
                 <Button type="button" onClick={handleCaptureImage} className="w-full" disabled={isProcessing}>
                   <Camera className="mr-2 h-4 w-4" /> Capture Image
                 </Button>
               )}
             </div>
-          )}
           <canvas ref={canvasRef} className="hidden" />
 
           {previewImage && (
@@ -376,3 +378,5 @@ export function AddProductFormClient() {
     </Card>
   );
 }
+
+    

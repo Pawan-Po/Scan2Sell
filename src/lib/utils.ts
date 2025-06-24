@@ -13,3 +13,5 @@ export const fileToDataUri = (file: File): Promise<string> => {
     reader.readAsDataURL(file);
   });
 };
+
+    
