@@ -400,7 +400,3 @@ export function AddProductFormClient() {
     </Card>
   );
 }
-
-    
-
-    
