@@ -1,4 +1,3 @@
-
 'use client';
 
 import Link from 'next/link';
@@ -72,19 +71,17 @@ export function SidebarNav() {
         <SidebarMenu>
           {navItems.map((item) => (
             <SidebarMenuItem key={item.href}>
-              <Link href={item.href}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))}
-                  tooltip={item.label}
-                  className="justify-start"
-                >
-                  <a>
-                    <item.icon className="h-5 w-5" />
-                    <span>{item.label}</span>
-                  </a>
-                </SidebarMenuButton>
-              </Link>
+              <SidebarMenuButton
+                asChild
+                isActive={pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))}
+                tooltip={item.label}
+                className="justify-start"
+              >
+                <Link href={item.href}>
+                  <item.icon className="h-5 w-5" />
+                  <span>{item.label}</span>
+                </Link>
+              </SidebarMenuButton>
             </SidebarMenuItem>
           ))}
         </SidebarMenu>
@@ -93,20 +90,18 @@ export function SidebarNav() {
         <SidebarMenu>
           {dynamicBottomNavItems.map((item) => (
             <SidebarMenuItem key={item.href}>
-               <Link href={item.href}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={pathname === item.href}
-                  tooltip={item.label}
-                  className="justify-start"
-                  variant="ghost"
-                >
-                  <a>
-                    <item.icon className="h-5 w-5" />
-                    <span>{item.label}</span>
-                  </a>
-                </SidebarMenuButton>
-              </Link>
+               <SidebarMenuButton
+                 asChild
+                 isActive={pathname === item.href}
+                 tooltip={item.label}
+                 className="justify-start"
+                 variant="ghost"
+               >
+                 <Link href={item.href}>
+                   <item.icon className="h-5 w-5" />
+                   <span>{item.label}</span>
+                 </Link>
+               </SidebarMenuButton>
             </SidebarMenuItem>
           ))}
         </SidebarMenu>
