@@ -41,8 +41,8 @@ export function AddProductFormClient() {
   const [isSaving, setIsSaving] = React.useState(false);
   const [previewImage, setPreviewImage] = React.useState<string | null>(null);
 
-  const [hasCameraPermission, setHasCameraPermission] = React.useState<boolean | null>(null);
   const [isCameraOpen, setIsCameraOpen] = React.useState(false);
+  const [hasCameraPermission, setHasCameraPermission] = React.useState<boolean | null>(null);
   
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
@@ -89,19 +89,20 @@ export function AddProductFormClient() {
     }
   }, [productImageFile, isCameraOpen, toast]);
 
+  // Robust useEffect for managing camera stream
   React.useEffect(() => {
-    const getCameraPermission = async () => {
+    const startStream = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-        streamRef.current = stream; // Store stream in ref
-        setHasCameraPermission(true);
+        streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
+        setHasCameraPermission(true);
       } catch (error) {
         console.error('Error accessing camera:', error);
         setHasCameraPermission(false);
-        setIsCameraOpen(false);
+        setIsCameraOpen(false); // Close camera view on error
         toast({
           variant: 'destructive',
           title: 'Camera Access Denied',
@@ -109,17 +110,26 @@ export function AddProductFormClient() {
         });
       }
     };
-    
+
+    const stopStream = () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+       if (videoRef.current) {
+          videoRef.current.srcObject = null;
+      }
+    };
+
     if (isCameraOpen) {
-      getCameraPermission();
+      startStream();
+    } else {
+      stopStream();
     }
-    
+
+    // Cleanup on component unmount
     return () => {
-        // Cleanup function to stop video stream
-        if (streamRef.current) {
-           streamRef.current.getTracks().forEach(track => track.stop());
-           streamRef.current = null;
-        }
+      stopStream();
     };
   }, [isCameraOpen, toast]);
 
@@ -129,7 +139,7 @@ export function AddProductFormClient() {
     } else {
       setPreviewImage(null); 
       setValue('productLabelImage', undefined); 
-      setHasCameraPermission(null); // Reset permission status
+      setHasCameraPermission(null); // Reset permission status before opening
       setIsCameraOpen(true);
     }
   };
@@ -147,9 +157,8 @@ export function AddProductFormClient() {
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     const dataUri = canvas.toDataURL('image/png');
 
-    // Set the image for preview
+    // Set the image for preview & immediately close camera
     setPreviewImage(dataUri);
-    // Close camera
     setIsCameraOpen(false);
     
     // Immediately start OCR process
@@ -172,6 +181,33 @@ export function AddProductFormClient() {
       setIsOcrProcessing(false);
     }
   }, [setValue, toast]);
+
+  const handleOcrBarcodeFromUpload = React.useCallback(async () => {
+    if (!previewImage) {
+      toast({ title: 'Image required', description: 'Please upload an image to scan for a barcode.', variant: 'destructive' });
+      return;
+    }
+
+    setIsOcrProcessing(true);
+    try {
+      const aiInput: ExtractBarcodeInput = {
+        productLabelDataUri: previewImage,
+      };
+      const result = await extractBarcode(aiInput);
+      if (result.barcode) {
+        setValue('barcode', result.barcode);
+        toast({ title: 'Barcode Scanned!', description: `Found barcode: ${result.barcode}` });
+      } else {
+        setValue('barcode', '');
+        toast({ title: 'No Barcode Found', description: 'Could not detect a barcode in the image.', variant: 'destructive' });
+      }
+    } catch (error) {
+      console.error('OCR failed:', error);
+      toast({ title: 'OCR Error', description: 'Failed to scan barcode from image.', variant: 'destructive' });
+    } finally {
+      setIsOcrProcessing(false);
+    }
+  }, [previewImage, setValue, toast]);
 
   const handleEnhanceDescription = React.useCallback(async () => {
     if (!previewImage) {
@@ -199,33 +235,6 @@ export function AddProductFormClient() {
       setIsAiProcessing(false);
     }
   }, [previewImage, productNameWatch, setValue, toast]);
-
-  const handleOcrBarcode = React.useCallback(async () => {
-    if (!previewImage) {
-      toast({ title: 'Image required', description: 'Please upload or capture an image to scan for a barcode.', variant: 'destructive' });
-      return;
-    }
-
-    setIsOcrProcessing(true);
-    try {
-      const aiInput: ExtractBarcodeInput = {
-        productLabelDataUri: previewImage,
-      };
-      const result = await extractBarcode(aiInput);
-      if (result.barcode) {
-        setValue('barcode', result.barcode);
-        toast({ title: 'Barcode Scanned!', description: `Found barcode: ${result.barcode}` });
-      } else {
-        setValue('barcode', '');
-        toast({ title: 'No Barcode Found', description: 'Could not detect a barcode in the image.', variant: 'destructive' });
-      }
-    } catch (error) {
-      console.error('OCR failed:', error);
-      toast({ title: 'OCR Error', description: 'Failed to scan barcode from image.', variant: 'destructive' });
-    } finally {
-      setIsOcrProcessing(false);
-    }
-  }, [previewImage, setValue, toast]);
   
   const onSubmit = async (data: ProductFormData) => {
     setIsSaving(true);
@@ -293,7 +302,8 @@ export function AddProductFormClient() {
             {errors.productLabelImage && <p className="text-sm text-destructive">{errors.productLabelImage.message?.toString()}</p>}
           </div>
 
-          <div className={cn("space-y-2", isCameraOpen ? 'block' : 'hidden')}>
+          {isCameraOpen && (
+            <div className="space-y-2">
               <video ref={videoRef} className="w-full aspect-video rounded-md bg-muted" autoPlay muted playsInline />
               {hasCameraPermission === false && (
                  <Alert variant="destructive">
@@ -310,9 +320,10 @@ export function AddProductFormClient() {
                 </Button>
               )}
             </div>
+          )}
           <canvas ref={canvasRef} className="hidden" />
 
-          {previewImage && (
+          {previewImage && !isCameraOpen && (
             <div className="mt-2 border rounded-md p-2 flex flex-col items-center bg-muted/50 space-y-2">
               <Image src={previewImage} alt="Product label preview" width={200} height={200} className="object-contain rounded-md max-h-[200px]" />
             </div>
@@ -350,7 +361,7 @@ export function AddProductFormClient() {
                 <Button 
                     type="button" 
                     variant="outline" 
-                    onClick={handleOcrBarcode} 
+                    onClick={handleOcrBarcodeFromUpload} 
                     disabled={isOcrProcessing || !previewImage || isSaving || isAiProcessing}
                     aria-label="Scan barcode from image"
                     title="Scan barcode from image"
