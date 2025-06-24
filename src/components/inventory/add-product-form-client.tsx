@@ -157,11 +157,9 @@ export function AddProductFormClient() {
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     const dataUri = canvas.toDataURL('image/png');
 
-    // Set the image for preview & immediately close camera
     setPreviewImage(dataUri);
     setIsCameraOpen(false);
     
-    // Immediately start OCR process
     setIsOcrProcessing(true);
     toast({ title: "Image captured. Now scanning for barcode..." });
 
@@ -180,7 +178,7 @@ export function AddProductFormClient() {
     } finally {
       setIsOcrProcessing(false);
     }
-  }, [setValue, toast]);
+  }, [setValue, toast, setPreviewImage, setIsCameraOpen, setIsOcrProcessing]);
 
   const handleOcrBarcodeFromUpload = React.useCallback(async () => {
     if (!previewImage) {
