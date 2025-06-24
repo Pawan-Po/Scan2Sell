@@ -16,20 +16,19 @@ import { extractBarcode, type ExtractBarcodeInput } from '@/ai/flows/extract-bar
 import { addProductToInventory } from '@/data/mock-data';
 import type { ProductFormData, Product } from '@/lib/types';
 import { fileToDataUri } from '@/lib/utils';
-import { cn } from '@/lib/utils';
 import Image from 'next/image';
-import { Wand2, Save, RotateCcw, Camera, AlertTriangle, Barcode } from 'lucide-react';
+import { Wand2, Save, RotateCcw, Camera, AlertTriangle, Barcode, Image as ImageIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 const productFormSchema = z.object({
-  productLabelImage: z.custom<FileList>().optional(), // For file upload
+  productLabelImage: z.custom<FileList>().optional(),
   productName: z.string().min(2, { message: 'Product name must be at least 2 characters.' }),
   price: z.coerce.number().positive({ message: 'Price must be a positive number.' }),
   quantity: z.coerce.number().int().min(0, { message: 'Quantity must be a non-negative integer.' }),
   expiryDate: z.string().optional(),
   description: z.string().optional(),
-  barcode: z.string().optional(), // Added barcode
+  barcode: z.string().optional(),
 });
 
 
@@ -41,7 +40,8 @@ export function AddProductFormClient() {
   const [isSaving, setIsSaving] = React.useState(false);
   const [previewImage, setPreviewImage] = React.useState<string | null>(null);
 
-  const [isCameraOpen, setIsCameraOpen] = React.useState(false);
+  const [isCameraOpen, setIsCameraOpen] = React.useState(false); // For product image
+  const [isBarcodeScannerOpen, setIsBarcodeScannerOpen] = React.useState(false); // For barcode
   const [hasCameraPermission, setHasCameraPermission] = React.useState<boolean | null>(null);
   
   const videoRef = React.useRef<HTMLVideoElement>(null);
@@ -77,7 +77,6 @@ export function AddProductFormClient() {
       fileToDataUri(file).then(dataUri => {
         if (!isCancelled) {
           setPreviewImage(dataUri);
-          if (isCameraOpen) setIsCameraOpen(false); // Close camera if file is uploaded
         }
       }).catch(error => {
         if (!isCancelled) {
@@ -87,10 +86,11 @@ export function AddProductFormClient() {
       });
       return () => { isCancelled = true; };
     }
-  }, [productImageFile, isCameraOpen, toast]);
+  }, [productImageFile, toast]);
 
-  // Robust useEffect for managing camera stream
   React.useEffect(() => {
+    const streamShouldBeActive = isCameraOpen || isBarcodeScannerOpen;
+
     const startStream = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
@@ -102,7 +102,8 @@ export function AddProductFormClient() {
       } catch (error) {
         console.error('Error accessing camera:', error);
         setHasCameraPermission(false);
-        setIsCameraOpen(false); // Close camera view on error
+        setIsCameraOpen(false);
+        setIsBarcodeScannerOpen(false);
         toast({
           variant: 'destructive',
           title: 'Camera Access Denied',
@@ -121,30 +122,35 @@ export function AddProductFormClient() {
       }
     };
 
-    if (isCameraOpen) {
+    if (streamShouldBeActive) {
       startStream();
     } else {
       stopStream();
     }
 
-    // Cleanup on component unmount
     return () => {
       stopStream();
     };
-  }, [isCameraOpen, toast]);
+  }, [isCameraOpen, isBarcodeScannerOpen, toast]);
 
   const handleToggleCamera = () => {
+    if (isBarcodeScannerOpen) setIsBarcodeScannerOpen(false);
     if (isCameraOpen) {
       setIsCameraOpen(false);
     } else {
       setPreviewImage(null); 
       setValue('productLabelImage', undefined); 
-      setHasCameraPermission(null); // Reset permission status before opening
+      setHasCameraPermission(null);
       setIsCameraOpen(true);
     }
   };
 
-  const handleCaptureAndScanBarcode = React.useCallback(async () => {
+  const handleToggleBarcodeScanner = () => {
+    if (isCameraOpen) setIsCameraOpen(false);
+    setIsBarcodeScannerOpen(prev => !prev);
+  };
+  
+  const handleCaptureProductImage = React.useCallback(() => {
     if (!videoRef.current || !canvasRef.current) return;
 
     const video = videoRef.current;
@@ -159,26 +165,9 @@ export function AddProductFormClient() {
 
     setPreviewImage(dataUri);
     setIsCameraOpen(false);
-    
-    setIsOcrProcessing(true);
-    toast({ title: "Image captured. Now scanning for barcode..." });
+    toast({ title: "Product image captured." });
+  }, [toast]);
 
-    try {
-      const result = await extractBarcode({ productLabelDataUri: dataUri });
-      if (result.barcode) {
-        setValue('barcode', result.barcode);
-        toast({ title: 'Barcode Scanned!', description: `Found barcode: ${result.barcode}` });
-      } else {
-        setValue('barcode', '');
-        toast({ title: 'No Barcode Found', description: 'Could not detect a barcode in the image.', variant: 'destructive' });
-      }
-    } catch (error) {
-      console.error('OCR failed:', error);
-      toast({ title: 'OCR Error', description: 'Failed to scan barcode from image.', variant: 'destructive' });
-    } finally {
-      setIsOcrProcessing(false);
-    }
-  }, [setValue, toast, setPreviewImage, setIsCameraOpen, setIsOcrProcessing]);
 
   const handleOcrBarcodeFromUpload = React.useCallback(async () => {
     if (!previewImage) {
@@ -206,6 +195,42 @@ export function AddProductFormClient() {
       setIsOcrProcessing(false);
     }
   }, [previewImage, setValue, toast]);
+
+
+  const handleScanBarcodeFromCamera = React.useCallback(async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUri = canvas.toDataURL('image/png');
+
+    setIsBarcodeScannerOpen(false);
+    setIsOcrProcessing(true);
+    toast({ title: "Scanning for barcode..." });
+    
+    try {
+      const result = await extractBarcode({ productLabelDataUri: dataUri });
+      if (result.barcode) {
+        setValue('barcode', result.barcode);
+        toast({ title: 'Barcode Scanned!', description: `Found barcode: ${result.barcode}` });
+      } else {
+        setValue('barcode', '');
+        toast({ title: 'No Barcode Found', description: 'Could not detect a barcode in the image.', variant: 'destructive' });
+      }
+    } catch (error) {
+      console.error('OCR failed:', error);
+      toast({ title: 'OCR Error', description: 'Failed to scan barcode from image.', variant: 'destructive' });
+    } finally {
+      setIsOcrProcessing(false);
+    }
+  }, [setValue, toast]);
+
 
   const handleEnhanceDescription = React.useCallback(async () => {
     if (!previewImage) {
@@ -258,6 +283,7 @@ export function AddProductFormClient() {
       reset();
       setPreviewImage(null);
       setIsCameraOpen(false);
+      setIsBarcodeScannerOpen(false);
       router.push('/inventory');
     } catch (error) {
       console.error('Failed to add product:', error);
@@ -272,12 +298,13 @@ export function AddProductFormClient() {
   };
 
   const isProcessing = isSaving || isAiProcessing || isOcrProcessing;
+  const isAnyCameraOpen = isCameraOpen || isBarcodeScannerOpen;
 
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-xl">
       <CardHeader>
         <CardTitle className="font-headline text-2xl">Add New Product</CardTitle>
-        <CardDescription>Upload/capture a product image and fill in the details manually.</CardDescription>
+        <CardDescription>Fill in the details below. Use your camera for the product image and to scan barcodes.</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -291,9 +318,9 @@ export function AddProductFormClient() {
                 accept="image/*"
                 {...register('productLabelImage')}
                 className="flex-grow file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-                disabled={isCameraOpen || isProcessing}
+                disabled={isAnyCameraOpen || isProcessing}
               />
-              <Button type="button" variant="outline" onClick={handleToggleCamera} disabled={isProcessing}>
+              <Button type="button" variant="outline" onClick={handleToggleCamera} disabled={isProcessing || isBarcodeScannerOpen}>
                 <Camera className="mr-2 h-4 w-4" /> {isCameraOpen ? 'Close Camera' : 'Use Camera'}
               </Button>
             </div>
@@ -308,20 +335,21 @@ export function AddProductFormClient() {
                     <AlertTriangle className="h-4 w-4" />
                     <AlertTitle>Camera Access Denied</AlertTitle>
                     <AlertDescription>
-                      Please enable camera permissions in your browser settings to use this feature.
+                      Please enable camera permissions in your browser settings.
                     </AlertDescription>
                   </Alert>
               )}
               {hasCameraPermission === true && (
-                <Button type="button" onClick={handleCaptureAndScanBarcode} className="w-full" disabled={isProcessing}>
-                  <Barcode className="mr-2 h-4 w-4" /> Capture & Scan Barcode
+                <Button type="button" onClick={handleCaptureProductImage} className="w-full" disabled={isProcessing}>
+                  <ImageIcon className="mr-2 h-4 w-4" /> Capture Product Image
                 </Button>
               )}
             </div>
           )}
+
           <canvas ref={canvasRef} className="hidden" />
 
-          {previewImage && !isCameraOpen && (
+          {previewImage && !isAnyCameraOpen && (
             <div className="mt-2 border rounded-md p-2 flex flex-col items-center bg-muted/50 space-y-2">
               <Image src={previewImage} alt="Product label preview" width={200} height={200} className="object-contain rounded-md max-h-[200px]" />
             </div>
@@ -329,19 +357,19 @@ export function AddProductFormClient() {
 
           <div className="space-y-2">
             <Label htmlFor="productName">Product Name</Label>
-            <Input id="productName" {...register('productName')} placeholder="e.g., Organic Apples" disabled={isProcessing} />
+            <Input id="productName" {...register('productName')} placeholder="e.g., Organic Apples" disabled={isProcessing || isAnyCameraOpen} />
             {errors.productName && <p className="text-sm text-destructive">{errors.productName.message}</p>}
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <Label htmlFor="price">Price</Label>
-              <Input id="price" type="number" step="0.01" {...register('price')} placeholder="0.00" disabled={isProcessing}/>
+              <Input id="price" type="number" step="0.01" {...register('price')} placeholder="0.00" disabled={isProcessing || isAnyCameraOpen}/>
               {errors.price && <p className="text-sm text-destructive">{errors.price.message}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="quantity">Quantity</Label>
-              <Input id="quantity" type="number" {...register('quantity')} placeholder="0" disabled={isProcessing} />
+              <Input id="quantity" type="number" {...register('quantity')} placeholder="0" disabled={isProcessing || isAnyCameraOpen} />
               {errors.quantity && <p className="text-sm text-destructive">{errors.quantity.message}</p>}
             </div>
           </div>
@@ -354,26 +382,57 @@ export function AddProductFormClient() {
                     {...register('barcode')} 
                     placeholder="e.g., 123456789012" 
                     className="flex-grow"
-                    disabled={isProcessing}
+                    disabled={isProcessing || isAnyCameraOpen}
                 />
                 <Button 
                     type="button" 
                     variant="outline" 
                     onClick={handleOcrBarcodeFromUpload} 
-                    disabled={isOcrProcessing || !previewImage || isSaving || isAiProcessing}
-                    aria-label="Scan barcode from image"
-                    title="Scan barcode from image"
+                    disabled={isOcrProcessing || !previewImage || isSaving || isAiProcessing || isAnyCameraOpen}
+                    aria-label="Scan barcode from uploaded image"
+                    title="Scan barcode from uploaded image"
                 >
-                    {isOcrProcessing ? <RotateCcw className="h-4 w-4 animate-spin" /> : <Barcode className="h-4 w-4" />}
+                    {isOcrProcessing && !isAnyCameraOpen ? <RotateCcw className="h-4 w-4 animate-spin" /> : <Barcode className="h-4 w-4" />}
+                </Button>
+                 <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={handleToggleBarcodeScanner} 
+                    disabled={isProcessing || isCameraOpen}
+                    aria-label="Scan barcode with camera"
+                    title="Scan barcode with camera"
+                >
+                   {isOcrProcessing && isAnyCameraOpen ? <RotateCcw className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
                 </Button>
             </div>
-            <p className="text-xs text-muted-foreground">Upload an image, then click the barcode icon to scan.</p>
+            <p className="text-xs text-muted-foreground">Upload an image and click the barcode icon, or click the camera icon to scan live.</p>
             {errors.barcode && <p className="text-sm text-destructive">{errors.barcode.message}</p>}
           </div>
+          
+           {isBarcodeScannerOpen && (
+            <div className="space-y-2">
+              <video ref={videoRef} className="w-full aspect-video rounded-md bg-muted" autoPlay muted playsInline />
+              {hasCameraPermission === false && (
+                 <Alert variant="destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Camera Access Denied</AlertTitle>
+                    <AlertDescription>
+                      Please enable camera permissions in your browser settings.
+                    </AlertDescription>
+                  </Alert>
+              )}
+              {hasCameraPermission === true && (
+                <Button type="button" onClick={handleScanBarcodeFromCamera} className="w-full" disabled={isProcessing}>
+                  <Barcode className="mr-2 h-4 w-4" /> Capture & Scan Barcode
+                </Button>
+              )}
+            </div>
+          )}
+
 
           <div className="space-y-2">
             <Label htmlFor="expiryDate">Expiry Date (Optional)</Label>
-            <Input id="expiryDate" type="date" {...register('expiryDate')} disabled={isProcessing} />
+            <Input id="expiryDate" type="date" {...register('expiryDate')} disabled={isProcessing || isAnyCameraOpen} />
             {errors.expiryDate && <p className="text-sm text-destructive">{errors.expiryDate.message}</p>}
           </div>
 
@@ -385,21 +444,21 @@ export function AddProductFormClient() {
                 variant="outline" 
                 size="sm" 
                 onClick={handleEnhanceDescription} 
-                disabled={isAiProcessing || !previewImage || !productNameWatch || isSaving || isOcrProcessing}
+                disabled={isProcessing || !previewImage || !productNameWatch || isAnyCameraOpen}
               >
                 {isAiProcessing ? <RotateCcw className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
-                AI Enhance Desc.
+                AI Enhance
               </Button>
             </div>
-            <Textarea id="description" {...register('description')} placeholder="Enter product description or use AI to populate." rows={4} disabled={isProcessing}/>
+            <Textarea id="description" {...register('description')} placeholder="Enter product description or use AI to populate." rows={4} disabled={isProcessing || isAnyCameraOpen}/>
             {errors.description && <p className="text-sm text-destructive">{errors.description.message}</p>}
           </div>
 
           <div className="flex justify-end gap-4 pt-4">
-            <Button type="button" variant="outline" onClick={() => { reset(); setPreviewImage(null); setIsCameraOpen(false); }} disabled={isProcessing}>
+            <Button type="button" variant="outline" onClick={() => { reset(); setPreviewImage(null); setIsCameraOpen(false); setIsBarcodeScannerOpen(false); }} disabled={isProcessing || isAnyCameraOpen}>
               Reset
             </Button>
-            <Button type="submit" disabled={isProcessing}>
+            <Button type="submit" disabled={isProcessing || isAnyCameraOpen}>
               {isSaving ? <RotateCcw className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
               Save Product
             </Button>
