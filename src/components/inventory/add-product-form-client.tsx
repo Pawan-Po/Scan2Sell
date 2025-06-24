@@ -12,11 +12,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { enhanceProductDescription, type EnhanceProductDescriptionInput } from '@/ai/flows/enhance-product-description';
+import { extractBarcode, type ExtractBarcodeInput } from '@/ai/flows/extract-barcode-flow';
 import { addProductToInventory } from '@/data/mock-data';
 import type { ProductFormData, Product } from '@/lib/types';
 import { fileToDataUri } from '@/lib/utils';
 import Image from 'next/image';
-import { Wand2, Save, RotateCcw, Camera, AlertTriangle } from 'lucide-react';
+import { Wand2, Save, RotateCcw, Camera, AlertTriangle, Barcode } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
@@ -35,6 +36,7 @@ export function AddProductFormClient() {
   const { toast } = useToast();
   const router = useRouter();
   const [isAiProcessing, setIsAiProcessing] = React.useState(false);
+  const [isOcrProcessing, setIsOcrProcessing] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
   const [previewImage, setPreviewImage] = React.useState<string | null>(null);
 
@@ -165,6 +167,33 @@ export function AddProductFormClient() {
       setIsAiProcessing(false);
     }
   };
+
+  const handleOcrBarcode = async () => {
+    if (!previewImage) {
+      toast({ title: 'Image required', description: 'Please upload or capture an image to scan for a barcode.', variant: 'destructive' });
+      return;
+    }
+
+    setIsOcrProcessing(true);
+    try {
+      const aiInput: ExtractBarcodeInput = {
+        productLabelDataUri: previewImage,
+      };
+      const result = await extractBarcode(aiInput);
+      if (result.barcode) {
+        setValue('barcode', result.barcode);
+        toast({ title: 'Barcode Scanned!', description: `Found barcode: ${result.barcode}` });
+      } else {
+        setValue('barcode', '');
+        toast({ title: 'No Barcode Found', description: 'Could not detect a barcode in the image.', variant: 'destructive' });
+      }
+    } catch (error) {
+      console.error('OCR failed:', error);
+      toast({ title: 'OCR Error', description: 'Failed to scan barcode from image.', variant: 'destructive' });
+    } finally {
+      setIsOcrProcessing(false);
+    }
+  };
   
   const onSubmit = async (data: ProductFormData) => {
     setIsSaving(true);
@@ -205,6 +234,8 @@ export function AddProductFormClient() {
     }
   };
 
+  const isProcessing = isSaving || isAiProcessing || isOcrProcessing;
+
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-xl">
       <CardHeader>
@@ -223,9 +254,9 @@ export function AddProductFormClient() {
                 accept="image/*"
                 {...register('productLabelImage')}
                 className="flex-grow file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-                disabled={isCameraOpen || isAiProcessing || isSaving}
+                disabled={isCameraOpen || isProcessing}
               />
-              <Button type="button" variant="outline" onClick={handleToggleCamera} disabled={isAiProcessing || isSaving}>
+              <Button type="button" variant="outline" onClick={handleToggleCamera} disabled={isProcessing}>
                 <Camera className="mr-2 h-4 w-4" /> {isCameraOpen ? 'Close Camera' : 'Use Camera'}
               </Button>
             </div>
@@ -245,7 +276,7 @@ export function AddProductFormClient() {
                   </Alert>
               )}
               {hasCameraPermission && (
-                <Button type="button" onClick={handleCaptureImage} className="w-full" disabled={isAiProcessing || isSaving}>
+                <Button type="button" onClick={handleCaptureImage} className="w-full" disabled={isProcessing}>
                   <Camera className="mr-2 h-4 w-4" /> Capture Image
                 </Button>
               )}
@@ -261,32 +292,51 @@ export function AddProductFormClient() {
 
           <div className="space-y-2">
             <Label htmlFor="productName">Product Name</Label>
-            <Input id="productName" {...register('productName')} placeholder="e.g., Organic Apples" />
+            <Input id="productName" {...register('productName')} placeholder="e.g., Organic Apples" disabled={isProcessing} />
             {errors.productName && <p className="text-sm text-destructive">{errors.productName.message}</p>}
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <Label htmlFor="price">Price</Label>
-              <Input id="price" type="number" step="0.01" {...register('price')} placeholder="0.00" />
+              <Input id="price" type="number" step="0.01" {...register('price')} placeholder="0.00" disabled={isProcessing}/>
               {errors.price && <p className="text-sm text-destructive">{errors.price.message}</p>}
             </div>
             <div className="space-y-2">
               <Label htmlFor="quantity">Quantity</Label>
-              <Input id="quantity" type="number" {...register('quantity')} placeholder="0" />
+              <Input id="quantity" type="number" {...register('quantity')} placeholder="0" disabled={isProcessing} />
               {errors.quantity && <p className="text-sm text-destructive">{errors.quantity.message}</p>}
             </div>
           </div>
           
           <div className="space-y-2">
             <Label htmlFor="barcode">Barcode (Optional)</Label>
-            <Input id="barcode" {...register('barcode')} placeholder="e.g., 123456789012" />
+             <div className="flex gap-2">
+                <Input 
+                    id="barcode" 
+                    {...register('barcode')} 
+                    placeholder="e.g., 123456789012" 
+                    className="flex-grow"
+                    disabled={isProcessing}
+                />
+                <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={handleOcrBarcode} 
+                    disabled={isOcrProcessing || !previewImage || isSaving || isAiProcessing}
+                    aria-label="Scan barcode from image"
+                    title="Scan barcode from image"
+                >
+                    {isOcrProcessing ? <RotateCcw className="h-4 w-4 animate-spin" /> : <Barcode className="h-4 w-4" />}
+                </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Upload or capture an image, then click the barcode icon to scan.</p>
             {errors.barcode && <p className="text-sm text-destructive">{errors.barcode.message}</p>}
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="expiryDate">Expiry Date (Optional)</Label>
-            <Input id="expiryDate" type="date" {...register('expiryDate')} />
+            <Input id="expiryDate" type="date" {...register('expiryDate')} disabled={isProcessing} />
             {errors.expiryDate && <p className="text-sm text-destructive">{errors.expiryDate.message}</p>}
           </div>
 
@@ -298,21 +348,21 @@ export function AddProductFormClient() {
                 variant="outline" 
                 size="sm" 
                 onClick={handleEnhanceDescription} 
-                disabled={isAiProcessing || !previewImage || !productNameWatch || isSaving}
+                disabled={isAiProcessing || !previewImage || !productNameWatch || isSaving || isOcrProcessing}
               >
                 {isAiProcessing ? <RotateCcw className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
                 AI Enhance Desc.
               </Button>
             </div>
-            <Textarea id="description" {...register('description')} placeholder="Enter product description or use AI to populate." rows={4} />
+            <Textarea id="description" {...register('description')} placeholder="Enter product description or use AI to populate." rows={4} disabled={isProcessing}/>
             {errors.description && <p className="text-sm text-destructive">{errors.description.message}</p>}
           </div>
 
           <div className="flex justify-end gap-4 pt-4">
-            <Button type="button" variant="outline" onClick={() => { reset(); setPreviewImage(null); setIsCameraOpen(false); }} disabled={isSaving || isAiProcessing}>
+            <Button type="button" variant="outline" onClick={() => { reset(); setPreviewImage(null); setIsCameraOpen(false); }} disabled={isProcessing}>
               Reset
             </Button>
-            <Button type="submit" disabled={isSaving || isAiProcessing}>
+            <Button type="submit" disabled={isProcessing}>
               {isSaving ? <RotateCcw className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
               Save Product
             </Button>
