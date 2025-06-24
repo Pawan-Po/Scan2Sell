@@ -12,12 +12,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { enhanceProductDescription, type EnhanceProductDescriptionInput } from '@/ai/flows/enhance-product-description';
-import { extractProductInfo, type ExtractProductInfoInput } from '@/ai/flows/extract-product-info-flow';
 import { addProductToInventory } from '@/data/mock-data';
 import type { ProductFormData, Product } from '@/lib/types';
 import { fileToDataUri } from '@/lib/utils';
 import Image from 'next/image';
-import { Wand2, Save, RotateCcw, Camera, Sparkles, AlertTriangle } from 'lucide-react';
+import { Wand2, Save, RotateCcw, Camera, AlertTriangle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
@@ -36,7 +35,6 @@ export function AddProductFormClient() {
   const { toast } = useToast();
   const router = useRouter();
   const [isAiProcessing, setIsAiProcessing] = React.useState(false);
-  const [isAiExtracting, setIsAiExtracting] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
   const [previewImage, setPreviewImage] = React.useState<string | null>(null);
 
@@ -124,32 +122,6 @@ export function AddProductFormClient() {
     }
   };
 
-  const _triggerAiExtraction = async (imageDataUri: string) => {
-    setIsAiExtracting(true);
-    try {
-      const aiInput: ExtractProductInfoInput = { productLabelDataUri: imageDataUri };
-      const result = await extractProductInfo(aiInput);
-      
-      if (result.productName) setValue('productName', result.productName);
-      if (result.description) setValue('description', result.description);
-      if (result.barcode) setValue('barcode', result.barcode);
-      if (result.price) {
-        const numericPrice = parseFloat(result.price.replace(/[^0-9.-]+/g,""));
-        if (!isNaN(numericPrice)) {
-          setValue('price', numericPrice);
-        } else {
-           toast({ title: 'AI Price Note', description: `AI extracted price "${result.price}", please verify.`, variant: 'default' });
-        }
-      }
-      toast({ title: 'Data Extracted!', description: 'AI has populated form fields. Please review.' });
-    } catch (error) {
-      console.error('AI extraction failed:', error);
-      toast({ title: 'AI Error', description: 'Failed to extract data from label.', variant: 'destructive' });
-    } finally {
-      setIsAiExtracting(false);
-    }
-  };
-
   const handleCaptureImage = () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
@@ -162,17 +134,9 @@ export function AddProductFormClient() {
         const dataUri = canvas.toDataURL('image/png');
         setPreviewImage(dataUri);
         setIsCameraOpen(false); // Close camera after capture
-        _triggerAiExtraction(dataUri); // Automatically scan after capture
+        toast({ title: "Image Captured!", description: "The product image has been set."});
       }
     }
-  };
-  
-  const handleManualExtractWithAI = async () => {
-    if (!previewImage) {
-      toast({ title: 'Image required', description: 'Please upload or capture a product label image.', variant: 'destructive' });
-      return;
-    }
-    await _triggerAiExtraction(previewImage);
   };
 
   const handleEnhanceDescription = async () => {
@@ -245,13 +209,13 @@ export function AddProductFormClient() {
     <Card className="w-full max-w-2xl mx-auto shadow-xl">
       <CardHeader>
         <CardTitle className="font-headline text-2xl">Add New Product</CardTitle>
-        <CardDescription>Upload/capture a label, use AI to extract info, or fill in details manually.</CardDescription>
+        <CardDescription>Upload/capture a product image and fill in the details manually.</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           
           <div className="space-y-2">
-            <Label htmlFor="productLabelImage">Product Label Image</Label>
+            <Label htmlFor="productLabelImage">Product Image</Label>
             <div className="flex gap-2">
               <Input
                 id="productLabelImage"
@@ -259,9 +223,9 @@ export function AddProductFormClient() {
                 accept="image/*"
                 {...register('productLabelImage')}
                 className="flex-grow file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-                disabled={isCameraOpen || isAiExtracting || isAiProcessing || isSaving}
+                disabled={isCameraOpen || isAiProcessing || isSaving}
               />
-              <Button type="button" variant="outline" onClick={handleToggleCamera} disabled={isAiExtracting || isAiProcessing || isSaving}>
+              <Button type="button" variant="outline" onClick={handleToggleCamera} disabled={isAiProcessing || isSaving}>
                 <Camera className="mr-2 h-4 w-4" /> {isCameraOpen ? 'Close Camera' : 'Use Camera'}
               </Button>
             </div>
@@ -281,7 +245,7 @@ export function AddProductFormClient() {
                   </Alert>
               )}
               {hasCameraPermission && (
-                <Button type="button" onClick={handleCaptureImage} className="w-full" disabled={isAiExtracting || isAiProcessing || isSaving}>
+                <Button type="button" onClick={handleCaptureImage} className="w-full" disabled={isAiProcessing || isSaving}>
                   <Camera className="mr-2 h-4 w-4" /> Capture Image
                 </Button>
               )}
@@ -292,23 +256,19 @@ export function AddProductFormClient() {
           {previewImage && (
             <div className="mt-2 border rounded-md p-2 flex flex-col items-center bg-muted/50 space-y-2">
               <Image src={previewImage} alt="Product label preview" width={200} height={200} className="object-contain rounded-md max-h-[200px]" />
-              <Button type="button" variant="outline" size="sm" onClick={handleManualExtractWithAI} disabled={isAiExtracting || isAiProcessing || isSaving}>
-                {isAiExtracting ? <RotateCcw className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-                Scan Label with AI
-              </Button>
             </div>
           )}
 
           <div className="space-y-2">
             <Label htmlFor="productName">Product Name</Label>
-            <Input id="productName" {...register('productName')} placeholder="e.g., Organic Apples" disabled={isAiExtracting}/>
+            <Input id="productName" {...register('productName')} placeholder="e.g., Organic Apples" />
             {errors.productName && <p className="text-sm text-destructive">{errors.productName.message}</p>}
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <Label htmlFor="price">Price</Label>
-              <Input id="price" type="number" step="0.01" {...register('price')} placeholder="0.00" disabled={isAiExtracting}/>
+              <Input id="price" type="number" step="0.01" {...register('price')} placeholder="0.00" />
               {errors.price && <p className="text-sm text-destructive">{errors.price.message}</p>}
             </div>
             <div className="space-y-2">
@@ -320,7 +280,7 @@ export function AddProductFormClient() {
           
           <div className="space-y-2">
             <Label htmlFor="barcode">Barcode (Optional)</Label>
-            <Input id="barcode" {...register('barcode')} placeholder="e.g., 123456789012" disabled={isAiExtracting}/>
+            <Input id="barcode" {...register('barcode')} placeholder="e.g., 123456789012" />
             {errors.barcode && <p className="text-sm text-destructive">{errors.barcode.message}</p>}
           </div>
 
@@ -338,21 +298,21 @@ export function AddProductFormClient() {
                 variant="outline" 
                 size="sm" 
                 onClick={handleEnhanceDescription} 
-                disabled={isAiProcessing || isAiExtracting || !previewImage || !productNameWatch || isSaving}
+                disabled={isAiProcessing || !previewImage || !productNameWatch || isSaving}
               >
                 {isAiProcessing ? <RotateCcw className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
                 AI Enhance Desc.
               </Button>
             </div>
-            <Textarea id="description" {...register('description')} placeholder="Enter product description or use AI to populate." rows={4} disabled={isAiExtracting}/>
+            <Textarea id="description" {...register('description')} placeholder="Enter product description or use AI to populate." rows={4} />
             {errors.description && <p className="text-sm text-destructive">{errors.description.message}</p>}
           </div>
 
           <div className="flex justify-end gap-4 pt-4">
-            <Button type="button" variant="outline" onClick={() => { reset(); setPreviewImage(null); setIsCameraOpen(false); }} disabled={isSaving || isAiProcessing || isAiExtracting}>
+            <Button type="button" variant="outline" onClick={() => { reset(); setPreviewImage(null); setIsCameraOpen(false); }} disabled={isSaving || isAiProcessing}>
               Reset
             </Button>
-            <Button type="submit" disabled={isSaving || isAiProcessing || isAiExtracting}>
+            <Button type="submit" disabled={isSaving || isAiProcessing}>
               {isSaving ? <RotateCcw className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
               Save Product
             </Button>
@@ -362,8 +322,3 @@ export function AddProductFormClient() {
     </Card>
   );
 }
-
-
-    
-
-    
