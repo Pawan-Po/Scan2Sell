@@ -15,12 +15,16 @@ import {
 } from '@/components/ui/table';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, MinusCircle, Trash2, ShoppingBag, RotateCcw, CreditCard, DollarSign, Barcode } from 'lucide-react';
+import { PlusCircle, MinusCircle, Trash2, ShoppingBag, RotateCcw, CreditCard, DollarSign, Barcode, Camera, AlertTriangle } from 'lucide-react';
 import type { Product, CartItem, SaleTransaction } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { ReceiptModal } from './receipt-modal';
 import Image from 'next/image';
 import { fetchInventory, processSale } from '@/data/mock-data';
+import { extractBarcode } from '@/ai/flows/extract-barcode-flow';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { cn } from '@/lib/utils';
+
 
 interface POSClientProps {
   inventory: Product[];
@@ -38,6 +42,15 @@ export function POSClient({ inventory: initialInventory }: POSClientProps) {
 
   const [isProcessingCheckout, setIsProcessingCheckout] = React.useState(false);
 
+  // Camera and OCR states
+  const [isCameraOpen, setIsCameraOpen] = React.useState(false);
+  const [hasCameraPermission, setHasCameraPermission] = React.useState<boolean | null>(null);
+  const [isOcrProcessing, setIsOcrProcessing] = React.useState(false);
+  const videoRef = React.useRef<HTMLVideoElement>(null);
+  const canvasRef = React.useRef<HTMLCanvasElement>(null);
+  const streamRef = React.useRef<MediaStream | null>(null);
+
+
   const refreshInventory = async () => {
     const clientInventory = await fetchInventory();
     setCurrentInventory(clientInventory);
@@ -49,7 +62,42 @@ export function POSClient({ inventory: initialInventory }: POSClientProps) {
     }
   }, []);
 
-  const addItemToCart = (productToAdd: Product) => {
+  // Effect to manage camera stream
+  React.useEffect(() => {
+    const getCameraPermission = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        streamRef.current = stream;
+        setHasCameraPermission(true);
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      } catch (error) {
+        console.error('Error accessing camera:', error);
+        setHasCameraPermission(false);
+        setIsCameraOpen(false);
+        toast({
+          variant: 'destructive',
+          title: 'Camera Access Denied',
+          description: 'Please enable camera permissions in your browser settings.',
+        });
+      }
+    };
+    
+    if (isCameraOpen) {
+      getCameraPermission();
+    }
+    
+    return () => {
+        if (streamRef.current) {
+           streamRef.current.getTracks().forEach(track => track.stop());
+           streamRef.current = null;
+        }
+    };
+  }, [isCameraOpen, toast]);
+
+
+  const addItemToCart = React.useCallback((productToAdd: Product) => {
      setCart(prevCart => {
       const existingItem = prevCart.find(item => item.id === productToAdd.id);
       if (existingItem) {
@@ -72,7 +120,7 @@ export function POSClient({ inventory: initialInventory }: POSClientProps) {
         }
       }
     });
-  };
+  }, [toast]);
 
   const handleBarcodeAdd = () => {
     if (!barcode) {
@@ -163,6 +211,51 @@ export function POSClient({ inventory: initialInventory }: POSClientProps) {
     toast({ title: 'New Sale Started', description: 'Cart has been cleared.'});
   }
 
+  const handleToggleCamera = () => {
+    setIsCameraOpen(prev => !prev);
+  };
+  
+  const handleCaptureAndScan = React.useCallback(async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUri = canvas.toDataURL('image/png');
+    
+    setIsOcrProcessing(true);
+    setIsCameraOpen(false); // Close camera immediately for better UX
+    
+    try {
+      const result = await extractBarcode({ productLabelDataUri: dataUri });
+      if (result.barcode) {
+        const productToAdd = currentInventory.find(p => p.barcode === result.barcode);
+        if (productToAdd) {
+          addItemToCart(productToAdd);
+          toast({ title: 'Product Added!', description: `${productToAdd.name} added via barcode scan.` });
+        } else {
+          setBarcode(result.barcode); // Put the scanned code in the input for the user to see
+          toast({ title: 'Product Not Found', description: `Scanned barcode "${result.barcode}" not in inventory.`, variant: 'destructive' });
+        }
+      } else {
+        toast({ title: 'No Barcode Found', description: 'Could not find a barcode in the image.', variant: 'destructive' });
+      }
+    } catch (error) {
+      console.error('OCR failed:', error);
+      toast({ title: 'OCR Error', description: 'Failed to scan barcode from image.', variant: 'destructive' });
+    } finally {
+      setIsOcrProcessing(false);
+    }
+  }, [currentInventory, addItemToCart, toast]);
+
+
+  const isProcessing = isProcessingCheckout || isOcrProcessing;
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
       <Card className="lg:col-span-2 shadow-xl">
@@ -175,7 +268,7 @@ export function POSClient({ inventory: initialInventory }: POSClientProps) {
           {/* Barcode Entry */}
           <div className="flex flex-col sm:flex-row gap-4 items-end">
             <div className="flex-grow space-y-1">
-              <Label htmlFor="barcode-input">Scan Barcode</Label>
+              <Label htmlFor="barcode-input">Product Barcode</Label>
               <div className="relative">
                  <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                  <Input
@@ -185,13 +278,39 @@ export function POSClient({ inventory: initialInventory }: POSClientProps) {
                     onKeyDown={(e) => e.key === 'Enter' && handleBarcodeAdd()}
                     placeholder="Enter or scan barcode..."
                     className="pl-10"
-                    disabled={isProcessingCheckout}
+                    disabled={isProcessing || isCameraOpen}
                   />
               </div>
             </div>
-            <Button onClick={handleBarcodeAdd} className="w-full sm:w-auto" disabled={isProcessingCheckout}>
-              Add Product
-            </Button>
+            <div className="flex gap-2 w-full sm:w-auto">
+                <Button onClick={handleBarcodeAdd} className="flex-grow" disabled={isProcessing || isCameraOpen}>
+                    Add Product
+                </Button>
+                <Button variant="outline" onClick={handleToggleCamera} className="flex-grow" disabled={isProcessing}>
+                    {isOcrProcessing ? <RotateCcw className="h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
+                    {isCameraOpen ? 'Close' : 'Scan'}
+                </Button>
+            </div>
+          </div>
+          
+          <canvas ref={canvasRef} className="hidden" />
+
+          <div className={cn("space-y-2", isCameraOpen ? 'block' : 'hidden')}>
+              <video ref={videoRef} className="w-full aspect-video rounded-md bg-muted" autoPlay muted playsInline />
+              {hasCameraPermission === false && (
+                 <Alert variant="destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Camera Access Denied</AlertTitle>
+                    <AlertDescription>
+                      Please enable camera permissions in your browser settings to use this feature.
+                    </AlertDescription>
+                  </Alert>
+              )}
+              {hasCameraPermission === true && (
+                <Button type="button" onClick={handleCaptureAndScan} className="w-full" disabled={isOcrProcessing}>
+                  <Camera className="mr-2 h-4 w-4" /> Capture & Scan Barcode
+                </Button>
+              )}
           </div>
 
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
@@ -204,7 +323,7 @@ export function POSClient({ inventory: initialInventory }: POSClientProps) {
           <div className="flex flex-col sm:flex-row gap-4 items-end">
             <div className="flex-grow space-y-1">
               <Label htmlFor="product-select">Select Product Manually</Label>
-              <Select value={selectedProductId} onValueChange={setSelectedProductId} disabled={isProcessingCheckout}>
+              <Select value={selectedProductId} onValueChange={setSelectedProductId} disabled={isProcessing || isCameraOpen}>
                 <SelectTrigger id="product-select" aria-label="Select product">
                   <SelectValue placeholder="Select a product..." />
                 </SelectTrigger>
@@ -217,7 +336,7 @@ export function POSClient({ inventory: initialInventory }: POSClientProps) {
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={handleManualAddToCart} className="w-full sm:w-auto" disabled={!selectedProductId || isProcessingCheckout}>
+            <Button onClick={handleManualAddToCart} className="w-full sm:w-auto" disabled={!selectedProductId || isProcessing || isCameraOpen}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add to Cart
             </Button>
           </div>
@@ -340,11 +459,11 @@ export function POSClient({ inventory: initialInventory }: POSClientProps) {
           </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-2">
-            <Button size="lg" className="w-full" onClick={() => handleCheckout('cash')} disabled={cart.length === 0 || isProcessingCheckout}>
+            <Button size="lg" className="w-full" onClick={() => handleCheckout('cash')} disabled={cart.length === 0 || isProcessing}>
                 {isProcessingCheckout ? <RotateCcw className="mr-2 h-5 w-5 animate-spin" /> : <DollarSign className="mr-2 h-5 w-5" />}
                 Pay with Cash
             </Button>
-            <Button size="lg" variant="secondary" className="w-full" onClick={() => handleCheckout('credit')} disabled={cart.length === 0 || isProcessingCheckout}>
+            <Button size="lg" variant="secondary" className="w-full" onClick={() => handleCheckout('credit')} disabled={cart.length === 0 || isProcessing}>
                 {isProcessingCheckout ? <RotateCcw className="mr-2 h-5 w-5 animate-spin" /> : <CreditCard className="mr-2 h-5 w-5" />}
                 Pay on Credit
             </Button>
