@@ -52,7 +52,6 @@ export function AddProductFormClient() {
     setValue,
     watch,
     reset,
-    // control, // control was not used
     formState: { errors },
   } = useForm<ProductFormData>({
     resolver: zodResolver(productFormSchema),
@@ -79,16 +78,17 @@ export function AddProductFormClient() {
         toast({ title: 'Image Error', description: 'Could not process the uploaded image.', variant: 'destructive' });
       });
     } else if (!isCameraOpen) {
-      // If file is cleared and camera not open, clear preview
-      // setPreviewImage(null); // This line might be too aggressive, let's test behavior.
+      // This branch is intentionally left blank.
+      // Clearing previewImage is handled by specific user actions (reset, toggle camera).
     }
   }, [productImageFile, isCameraOpen, toast]);
 
   React.useEffect(() => {
+    let stream: MediaStream | null = null;
     if (isCameraOpen) {
       const getCameraPermission = async () => {
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
           setHasCameraPermission(true);
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
@@ -105,13 +105,19 @@ export function AddProductFormClient() {
         }
       };
       getCameraPermission();
-    } else {
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach(track => track.stop());
-        videoRef.current.srcObject = null;
-      }
     }
+    
+    return () => {
+        // Cleanup function to stop video stream
+        if (stream) {
+           stream.getTracks().forEach(track => track.stop());
+        }
+        if(videoRef.current && videoRef.current.srcObject){
+            const mediaStream = videoRef.current.srcObject as MediaStream;
+            mediaStream.getTracks().forEach(track => track.stop());
+            videoRef.current.srcObject = null;
+        }
+    };
   }, [isCameraOpen, toast]);
 
   const handleToggleCamera = () => {
@@ -141,13 +147,13 @@ export function AddProductFormClient() {
     }
   };
 
-  const handleEnhanceDescription = async () => {
+  const handleEnhanceDescription = React.useCallback(async () => {
     if (!previewImage) {
       toast({ title: 'Image required', description: 'Please upload or capture a product label image for context.', variant: 'destructive' });
       return;
     }
     if (!productNameWatch) {
-      toast({ title: 'Product name required', description: 'Please enter or scan a product name.', variant: 'destructive' });
+      toast({ title: 'Product name required', description: 'Please enter a product name.', variant: 'destructive' });
       return;
     }
 
@@ -166,9 +172,9 @@ export function AddProductFormClient() {
     } finally {
       setIsAiProcessing(false);
     }
-  };
+  }, [previewImage, productNameWatch, setValue, toast]);
 
-  const handleOcrBarcode = async () => {
+  const handleOcrBarcode = React.useCallback(async () => {
     if (!previewImage) {
       toast({ title: 'Image required', description: 'Please upload or capture an image to scan for a barcode.', variant: 'destructive' });
       return;
@@ -193,13 +199,11 @@ export function AddProductFormClient() {
     } finally {
       setIsOcrProcessing(false);
     }
-  };
+  }, [previewImage, setValue, toast]);
   
   const onSubmit = async (data: ProductFormData) => {
     setIsSaving(true);
     try {
-      // Ensure a category, default to "Uncategorized" if needed, or make it a required field.
-      // For now, it's optional in Product but could be useful for filtering.
       const newProductData: Omit<Product, 'id'> = {
         name: data.productName,
         price: data.price,
@@ -207,9 +211,9 @@ export function AddProductFormClient() {
         expiryDate: data.expiryDate,
         description: data.description,
         barcode: data.barcode,
-        imageUrl: previewImage || undefined, // Uses the preview image (captured or uploaded)
-        lowStockThreshold: 5, // Default low stock threshold
-        category: 'General', // Example default category
+        imageUrl: previewImage || undefined,
+        lowStockThreshold: 5, 
+        category: 'General', 
       };
       
       await addProductToInventory(newProductData);
