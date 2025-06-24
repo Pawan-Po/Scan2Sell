@@ -1,45 +1,27 @@
 'use client';
 import { SidebarTrigger } from '@/components/ui/sidebar';
-// import { Button } from '@/components/ui/button';
-// import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-// import { UserCircle, LogIn, LogOut, Settings, LayoutDashboard } from 'lucide-react';
-// import { useAuth } from '@/hooks/use-auth';
-// import Link from 'next/link';
-// import {
-//   DropdownMenu,
-//   DropdownMenuContent,
-//   DropdownMenuItem,
-//   DropdownMenuLabel,
-//   DropdownMenuSeparator,
-//   DropdownMenuTrigger,
-// } from "@/components/ui/dropdown-menu";
-// import { signOutUser } from '@/lib/firebase/auth';
-// import { useRouter } from 'next/navigation';
-// import { useToast } from '@/hooks/use-toast';
-// import { Skeleton } from '@/components/ui/skeleton';
+import { usePathname } from 'next/navigation';
 
 export function AppHeader() {
-  // const { user, loading } = useAuth(); // Auth removed for now
-  // const router = useRouter();
-  // const { toast } = useToast();
+  const pathname = usePathname();
 
-  // const handleSignOut = async () => {
-  //   try {
-  //     await signOutUser();
-  //     toast({ title: 'Signed Out', description: 'You have been successfully signed out.' });
-  //     router.push('/login'); // Login page removed
-  //   } catch (error) {
-  //      toast({ title: 'Sign Out Error', description: 'Failed to sign out.', variant: 'destructive' });
-  //   }
-  // };
+  const getTitle = (path: string) => {
+    const routeName = path.split('/').pop() || 'inventory';
+    if (path.startsWith('/inventory/add')) return 'Add Product';
+    if (path.startsWith('/inventory')) return 'Inventory';
+    if (path.startsWith('/pos')) return 'Point of Sale';
+    
+    // Capitalize the first letter for other routes
+    return routeName.charAt(0).toUpperCase() + routeName.slice(1);
+  };
+
 
   return (
     <header className="sticky top-0 z-10 flex h-16 items-center gap-4 border-b bg-background/80 backdrop-blur-sm px-4 md:px-6">
       <SidebarTrigger className="md:hidden" />
       <div className="flex-1">
-        {/* Placeholder for breadcrumbs or page title if needed */}
+         <h1 className="text-xl font-semibold md:hidden">{getTitle(pathname)}</h1>
       </div>
-      {/* User avatar and login button removed as auth is disabled for now */}
     </header>
   );
 }

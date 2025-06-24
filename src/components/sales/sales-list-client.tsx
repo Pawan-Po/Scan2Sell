@@ -16,6 +16,10 @@ interface SalesListClientProps {
 export function SalesListClient({ initialSales }: SalesListClientProps) {
   const [sales, setSales] = React.useState(initialSales);
 
+  React.useEffect(() => {
+    setSales(initialSales);
+  }, [initialSales]);
+
   if (sales.length === 0) {
     return (
       <Card>
@@ -36,13 +40,13 @@ export function SalesListClient({ initialSales }: SalesListClientProps) {
         <Accordion type="single" collapsible className="w-full">
           {sales.map((sale) => (
             <AccordionItem key={sale.id} value={sale.id}>
-              <AccordionTrigger>
-                <div className="flex justify-between w-full pr-4">
+              <AccordionTrigger className="hover:no-underline">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center w-full pr-4 gap-2">
                   <div className="flex flex-col text-left">
-                    <span className="font-semibold">Sale ID: {sale.id.slice(-6).toUpperCase()}</span>
+                    <span className="font-semibold text-base">Sale ID: {sale.id.slice(-6).toUpperCase()}</span>
                     <span className="text-sm text-muted-foreground">{format(new Date(sale.date), "PPP p")}</span>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-4 self-end sm:self-center">
                      <Badge variant={sale.paymentMethod === 'credit' ? 'outline' : 'secondary'}>
                       {sale.paymentMethod}
                     </Badge>

@@ -14,7 +14,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       <div className="flex flex-col flex-1 min-h-screen">
         <AppHeader />
         <SidebarInset>
-          <main className="flex-1 p-4 md:p-6 lg:p-8">
+          <main className="flex-1 p-4 md:p-6 lg:p-8 pb-24 md:pb-8">
             {children}
           </main>
         </SidebarInset>

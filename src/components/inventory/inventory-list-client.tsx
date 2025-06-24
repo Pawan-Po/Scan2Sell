@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Edit2, PackageSearch, Filter, AlertCircle } from 'lucide-react';
 import type { Product } from '@/lib/types';
 import Image from 'next/image';
@@ -35,20 +35,18 @@ export function InventoryListClient({ initialProducts }: InventoryListClientProp
   const [isUpdateStockDialogOpen, setIsUpdateStockDialogOpen] = React.useState(false);
 
   React.useEffect(() => {
-    // On client mount, fetch the latest inventory which might come from localStorage
-    // via our updated mock-data.ts
     async function loadClientInventory() {
       const clientInventory = await fetchInventory();
       setProducts(clientInventory);
     }
-    if (typeof window !== 'undefined') { // Ensure this runs only on client
+    if (typeof window !== 'undefined') {
       loadClientInventory();
     }
-  }, []); // Empty dependency array: run once on mount
+  }, []);
 
   const categories = React.useMemo(() => 
     ['all', ...new Set(products.map(p => p.category).filter(Boolean) as string[])],
-    [products] // Depend on products state which is updated from localStorage
+    [products]
   );
 
   const filteredProducts = React.useMemo(() => {
@@ -80,7 +78,7 @@ export function InventoryListClient({ initialProducts }: InventoryListClientProp
           <PackageSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
           <Input
             type="search"
-            placeholder="Search products by name, barcode, category..."
+            placeholder="Search products..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10 w-full"
@@ -122,57 +120,111 @@ export function InventoryListClient({ initialProducts }: InventoryListClientProp
           </p>
         </div>
       ) : (
-        <Card className="shadow-lg rounded-lg">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[80px]">Image</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead className="text-right">Price</TableHead>
-                <TableHead className="text-right">Quantity</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Expiry</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredProducts.map((product) => (
-                <TableRow key={product.id} className={product.quantity <= product.lowStockThreshold ? 'bg-accent/10 hover:bg-accent/20' : ''}>
-                  <TableCell>
-                    <Image
-                      src={product.imageUrl || `https://placehold.co/64x64.png`}
-                      alt={product.name}
-                      width={48}
-                      height={48}
-                      className="rounded-md object-cover"
-                      data-ai-hint={product.dataAiHint || (product.imageUrl ? undefined : "product generic")}
-                    />
-                  </TableCell>
-                  <TableCell className="font-medium">{product.name}</TableCell>
-                  <TableCell>{product.category || 'N/A'}</TableCell>
-                  <TableCell className="text-right">${product.price.toFixed(2)}</TableCell>
-                  <TableCell className="text-right">{product.quantity}</TableCell>
-                  <TableCell>
-                    {product.quantity <= product.lowStockThreshold ? (
-                      <Badge variant="destructive">Low Stock</Badge>
-                    ) : product.quantity <= product.lowStockThreshold + 5 ? (
-                       <Badge variant="outline" className="border-primary text-primary">Warning</Badge>
-                    ) : (
-                      <Badge variant="secondary">In Stock</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>{product.expiryDate || 'N/A'}</TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => openUpdateStockDialog(product)} aria-label={`Update stock for ${product.name}`}>
+        <>
+          {/* Desktop Table View */}
+          <Card className="shadow-lg rounded-lg hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[80px]">Image</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead className="text-right">Price</TableHead>
+                  <TableHead className="text-right">Quantity</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Expiry</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredProducts.map((product) => (
+                  <TableRow key={product.id} className={product.quantity <= product.lowStockThreshold ? 'bg-accent/10 hover:bg-accent/20' : ''}>
+                    <TableCell>
+                      <Image
+                        src={product.imageUrl || `https://placehold.co/64x64.png`}
+                        alt={product.name}
+                        width={48}
+                        height={48}
+                        className="rounded-md object-cover"
+                        data-ai-hint={product.dataAiHint || (product.imageUrl ? undefined : "product generic")}
+                      />
+                    </TableCell>
+                    <TableCell className="font-medium">{product.name}</TableCell>
+                    <TableCell>{product.category || 'N/A'}</TableCell>
+                    <TableCell className="text-right">${product.price.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{product.quantity}</TableCell>
+                    <TableCell>
+                      {product.quantity <= product.lowStockThreshold ? (
+                        <Badge variant="destructive">Low Stock</Badge>
+                      ) : product.quantity <= product.lowStockThreshold + 5 ? (
+                         <Badge variant="outline" className="border-primary text-primary">Warning</Badge>
+                      ) : (
+                        <Badge variant="secondary">In Stock</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>{product.expiryDate || 'N/A'}</TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="icon" onClick={() => openUpdateStockDialog(product)} aria-label={`Update stock for ${product.name}`}>
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+
+          {/* Mobile Card View */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:hidden">
+            {filteredProducts.map((product) => (
+              <Card key={product.id} className="shadow-lg rounded-lg">
+                <CardHeader className="flex flex-row items-start justify-between">
+                    <CardTitle className="text-base flex-grow pr-2">{product.name}</CardTitle>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" onClick={() => openUpdateStockDialog(product)} aria-label={`Update stock for ${product.name}`}>
                       <Edit2 className="h-4 w-4" />
                     </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
+                </CardHeader>
+                <CardContent className="flex flex-col sm:flex-row gap-4">
+                  <Image
+                    src={product.imageUrl || `https://placehold.co/100x100.png`}
+                    alt={product.name}
+                    width={80}
+                    height={80}
+                    className="rounded-md object-cover mx-auto"
+                    data-ai-hint={product.dataAiHint || (product.imageUrl ? undefined : "product generic")}
+                  />
+                  <div className="flex-grow space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Price:</span>
+                      <span className="font-medium">${product.price.toFixed(2)}</span>
+                    </div>
+                     <div className="flex justify-between">
+                      <span className="text-muted-foreground">Quantity:</span>
+                      <span className="font-medium">{product.quantity}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Category:</span>
+                      <span className="font-medium">{product.category || 'N/A'}</span>
+                    </div>
+                     <div className="flex justify-between">
+                      <span className="text-muted-foreground">Expiry:</span>
+                      <span className="font-medium">{product.expiryDate || 'N/A'}</span>
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter>
+                   {product.quantity <= product.lowStockThreshold ? (
+                      <Badge variant="destructive" className="w-full justify-center">Low Stock</Badge>
+                    ) : product.quantity <= product.lowStockThreshold + 5 ? (
+                       <Badge variant="outline" className="w-full justify-center border-primary text-primary">Warning</Badge>
+                    ) : (
+                      <Badge variant="secondary" className="w-full justify-center">In Stock</Badge>
+                    )}
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        </>
       )}
        <UpdateStockDialog
         product={selectedProductForUpdate}

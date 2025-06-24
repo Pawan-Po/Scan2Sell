@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutGrid, PlusCircle, ShoppingCart, Settings, AlertTriangle, DollarSign, CreditCard } from 'lucide-react';
+import { LayoutGrid, PlusCircle, ShoppingCart, Settings, AlertTriangle, DollarSign, CreditCard, MoreHorizontal } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -12,13 +12,14 @@ import {
   SidebarMenuButton,
   SidebarFooter,
 } from '@/components/ui/sidebar';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Logo } from '@/components/icons/logo';
-// import { useAuth } from '@/hooks/use-auth'; // Auth removed for now
-import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
+
 
 const navItemsBase = [
   { href: '/inventory', label: 'Inventory', icon: LayoutGrid },
-  { href: '/inventory/add', label: 'Add Product', icon: PlusCircle },
+  { href: '/inventory/add', label: 'Add Item', icon: PlusCircle },
   { href: '/pos', label: 'POS', icon: ShoppingCart },
   { href: '/sales', label: 'Sales', icon: DollarSign },
   { href: '/credit', label: 'Credit', icon: CreditCard },
@@ -29,36 +30,12 @@ const bottomNavItemsBase = [
   { href: '/alerts', label: 'Alerts', icon: AlertTriangle },
 ];
 
-export function SidebarNav() {
+
+function DesktopSidebar() {
   const pathname = usePathname();
-  // const { user, loading } = useAuth(); // Auth removed for now
-  const loading = false; // Simulate not loading as auth is removed
-
-  if (loading) { // This block will likely not be hit as loading is false
-    return (
-      <Sidebar collapsible="icon" variant="sidebar" side="left" className="border-r">
-        <SidebarHeader className="p-4 items-center">
-          <div className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
-            <Skeleton className="h-8 w-8 rounded-md" />
-            <Skeleton className="h-6 w-24 group-data-[collapsible=icon]:hidden" />
-          </div>
-        </SidebarHeader>
-        <SidebarContent className="flex-grow p-2 space-y-1">
-          {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-8 w-full rounded-md" />)}
-        </SidebarContent>
-        <SidebarFooter className="p-2 space-y-1">
-          {[...Array(2)].map((_, i) => <Skeleton key={i} className="h-8 w-full rounded-md" />)}
-        </SidebarFooter>
-      </Sidebar>
-    );
-  }
-
-  // Since auth is removed, we show all base items
-  const navItems = navItemsBase;
-  const dynamicBottomNavItems = bottomNavItemsBase; // Profile link removed
 
   return (
-    <Sidebar collapsible="icon" variant="sidebar" side="left" className="border-r">
+    <Sidebar collapsible="icon" variant="sidebar" side="left" className="border-r hidden md:flex">
       <SidebarHeader className="p-4 items-center">
         <Link href={"/inventory"} className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
           <Logo className="h-8 w-8 text-primary" />
@@ -69,11 +46,11 @@ export function SidebarNav() {
       </SidebarHeader>
       <SidebarContent className="flex-grow p-2">
         <SidebarMenu>
-          {navItems.map((item) => (
+          {navItemsBase.map((item) => (
             <SidebarMenuItem key={item.href}>
               <SidebarMenuButton
                 asChild
-                isActive={pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))}
+                isActive={pathname.startsWith(item.href)}
                 tooltip={item.label}
                 className="justify-start"
               >
@@ -88,7 +65,7 @@ export function SidebarNav() {
       </SidebarContent>
       <SidebarFooter className="p-2">
         <SidebarMenu>
-          {dynamicBottomNavItems.map((item) => (
+          {bottomNavItemsBase.map((item) => (
             <SidebarMenuItem key={item.href}>
                <SidebarMenuButton
                  asChild
@@ -107,5 +84,70 @@ export function SidebarNav() {
         </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
+  );
+}
+
+function MobileBottomNav() {
+    const pathname = usePathname();
+    const mainNavItems = navItemsBase.slice(0, 4);
+    const moreNavItems = [navItemsBase[4], ...bottomNavItemsBase];
+
+    return (
+        <nav className="md:hidden fixed bottom-0 left-0 z-50 w-full h-16 bg-background border-t border-border">
+            <div className="grid h-full grid-cols-5 mx-auto">
+                {mainNavItems.map(item => (
+                    <Link
+                        key={item.href}
+                        href={item.href}
+                        className={cn(
+                            "inline-flex flex-col items-center justify-center px-2 sm:px-4 hover:bg-muted/50",
+                             pathname.startsWith(item.href) ? "text-primary" : "text-muted-foreground"
+                        )}
+                    >
+                        <item.icon className="w-6 h-6 mb-1" />
+                        <span className="text-xs">{item.label}</span>
+                    </Link>
+                ))}
+
+                <Sheet>
+                    <SheetTrigger asChild>
+                         <button
+                            type="button"
+                            className="inline-flex flex-col items-center justify-center px-2 sm:px-4 hover:bg-muted/50 text-muted-foreground"
+                        >
+                            <MoreHorizontal className="w-6 h-6 mb-1" />
+                            <span className="text-xs">More</span>
+                        </button>
+                    </SheetTrigger>
+                    <SheetContent side="bottom" className="h-auto">
+                         <div className="grid grid-cols-3 gap-4 p-4">
+                            {moreNavItems.map(item => (
+                                 <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    className={cn(
+                                        "flex flex-col items-center justify-center p-2 rounded-lg hover:bg-muted",
+                                        pathname.startsWith(item.href) ? "text-primary" : "text-muted-foreground"
+                                    )}
+                                >
+                                    <item.icon className="w-6 h-6 mb-1" />
+                                    <span className="text-sm text-center">{item.label}</span>
+                                </Link>
+                            ))}
+                        </div>
+                    </SheetContent>
+                </Sheet>
+
+            </div>
+        </nav>
+    );
+}
+
+export function SidebarNav() {
+  return (
+    <>
+      <DesktopSidebar />
+      <MobileBottomNav />
+    </>
   );
 }

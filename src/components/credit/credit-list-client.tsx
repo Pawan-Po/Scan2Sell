@@ -59,12 +59,12 @@ export function CreditListClient({ initialCreditSales, onSalePaid }: CreditListC
     <div className="space-y-4">
       {sales.map((sale) => (
         <Card key={sale.id} className="shadow-md">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <div>
-              <CardTitle>Sale ID: {sale.id.slice(-6).toUpperCase()}</CardTitle>
+          <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pb-2">
+            <div className="flex-grow">
+              <CardTitle className="text-lg">Sale ID: {sale.id.slice(-6).toUpperCase()}</CardTitle>
               <CardDescription>{format(new Date(sale.date), "PPP p")}</CardDescription>
             </div>
-            <div className="text-2xl font-bold text-destructive">
+            <div className="text-2xl font-bold text-destructive self-end sm:self-center">
                 ${sale.totalAmount.toFixed(2)}
             </div>
           </CardHeader>

@@ -349,91 +349,92 @@ export function POSClient({ inventory: initialInventory }: POSClientProps) {
               <p className="mt-1 text-sm text-muted-foreground">Add products using barcode or manual selection.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto mt-4">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[60px]">Img</TableHead>
-                    <TableHead>Product</TableHead>
-                    <TableHead className="text-right">Price</TableHead>
-                    <TableHead className="w-[120px] text-center">Quantity</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="w-[50px]"> </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {cart.map(item => (
-                    <TableRow key={item.id}>
-                       <TableCell>
-                        <Image
-                          src={item.imageUrl || `https://placehold.co/48x48.png`}
-                          alt={item.name}
-                          width={40}
-                          height={40}
-                          className="rounded-sm object-cover"
-                          data-ai-hint={item.dataAiHint || (item.imageUrl ? undefined : "product generic")}
-                        />
-                      </TableCell>
-                      <TableCell className="font-medium">{item.name}</TableCell>
-                      <TableCell className="text-right">${item.price.toFixed(2)}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center justify-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => updateQuantity(item.id, item.cartQuantity - 1)}
-                            aria-label={`Decrease quantity of ${item.name}`}
-                          >
-                            <MinusCircle className="h-4 w-4" />
-                          </Button>
-                          <Input
-                            type="number"
-                            value={item.cartQuantity}
-                            onChange={(e) => {
-                                const val = parseInt(e.target.value);
-                                const productInInv = currentInventory.find(p => p.id === item.id);
-                                if (productInInv && val > productInInv.quantity) {
-                                   toast({ title: 'Stock Limit Exceeded', description: `Only ${productInInv.quantity} units of ${productInInv.name} available.`, variant: 'destructive' });
-                                   updateQuantity(item.id, productInInv.quantity);
-                                } else {
-                                   updateQuantity(item.id, val || 0)
-                                }
-                            }}
-                            onBlur={(e) => {
-                                if (item.cartQuantity === 0 && cart.find(ci => ci.id === item.id)) {
-                                } else if (isNaN(item.cartQuantity)) {
-                                    updateQuantity(item.id, 1);
-                                }
-                            }}
-                            className="w-12 h-8 text-center px-1"
-                            aria-label={`Quantity of ${item.name}`}
-                            min="0"
-                            max={currentInventory.find(p=>p.id === item.id)?.quantity}
-                          />
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => updateQuantity(item.id, item.cartQuantity + 1)}
-                            aria-label={`Increase quantity of ${item.name}`}
-                          >
-                            <PlusCircle className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        ${(item.price * item.cartQuantity).toFixed(2)}
-                      </TableCell>
-                       <TableCell>
-                        <Button variant="ghost" size="icon" onClick={() => removeFromCart(item.id)} className="text-destructive hover:text-destructive/80 h-7 w-7" aria-label={`Remove ${item.name} from cart`}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
+            <div className="mt-4">
+              {/* Desktop Cart Table */}
+              <div className="overflow-x-auto hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[60px]">Img</TableHead>
+                      <TableHead>Product</TableHead>
+                      <TableHead className="text-right">Price</TableHead>
+                      <TableHead className="w-[120px] text-center">Quantity</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
+                      <TableHead className="w-[50px]"> </TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {cart.map(item => (
+                      <TableRow key={item.id}>
+                         <TableCell>
+                          <Image
+                            src={item.imageUrl || `https://placehold.co/48x48.png`}
+                            alt={item.name}
+                            width={40}
+                            height={40}
+                            className="rounded-sm object-cover"
+                            data-ai-hint={item.dataAiHint || (item.imageUrl ? undefined : "product generic")}
+                          />
+                        </TableCell>
+                        <TableCell className="font-medium">{item.name}</TableCell>
+                        <TableCell className="text-right">${item.price.toFixed(2)}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center justify-center gap-1">
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => updateQuantity(item.id, item.cartQuantity - 1)} aria-label={`Decrease quantity of ${item.name}`}>
+                              <MinusCircle className="h-4 w-4" />
+                            </Button>
+                            <Input type="number" value={item.cartQuantity} onChange={(e) => updateQuantity(item.id, parseInt(e.target.value) || 0)} className="w-12 h-8 text-center px-1" aria-label={`Quantity of ${item.name}`} min="0" max={currentInventory.find(p=>p.id === item.id)?.quantity} />
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => updateQuantity(item.id, item.cartQuantity + 1)} aria-label={`Increase quantity of ${item.name}`}>
+                              <PlusCircle className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right font-medium">${(item.price * item.cartQuantity).toFixed(2)}</TableCell>
+                         <TableCell>
+                          <Button variant="ghost" size="icon" onClick={() => removeFromCart(item.id)} className="text-destructive hover:text-destructive/80 h-7 w-7" aria-label={`Remove ${item.name} from cart`}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile Cart List */}
+              <div className="space-y-4 md:hidden">
+                {cart.map(item => (
+                  <div key={item.id} className="flex items-center gap-4 p-2 border rounded-lg">
+                     <Image
+                        src={item.imageUrl || `https://placehold.co/64x64.png`}
+                        alt={item.name}
+                        width={64}
+                        height={64}
+                        className="rounded-md object-cover"
+                        data-ai-hint={item.dataAiHint || (item.imageUrl ? undefined : "product generic")}
+                      />
+                      <div className="flex-grow space-y-1">
+                        <p className="font-medium leading-tight">{item.name}</p>
+                        <p className="text-sm text-muted-foreground">${item.price.toFixed(2)}</p>
+                        <div className="flex items-center gap-2">
+                           <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => updateQuantity(item.id, item.cartQuantity - 1)}>
+                              <MinusCircle className="h-4 w-4" />
+                           </Button>
+                           <span className="font-bold w-4 text-center">{item.cartQuantity}</span>
+                            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => updateQuantity(item.id, item.cartQuantity + 1)}>
+                              <PlusCircle className="h-4 w-4" />
+                           </Button>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end">
+                        <p className="font-semibold">${(item.price * item.cartQuantity).toFixed(2)}</p>
+                        <Button variant="ghost" size="icon" onClick={() => removeFromCart(item.id)} className="text-destructive hover:text-destructive/80 h-7 w-7">
+                            <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </CardContent>
