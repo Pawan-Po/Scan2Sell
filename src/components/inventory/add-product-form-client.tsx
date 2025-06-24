@@ -88,7 +88,7 @@ export function AddProductFormClient() {
     if (isCameraOpen) {
       const getCameraPermission = async () => {
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
           setHasCameraPermission(true);
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
@@ -363,5 +363,7 @@ export function AddProductFormClient() {
   );
 }
 
+
+    
 
     
