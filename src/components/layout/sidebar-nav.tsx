@@ -1,8 +1,9 @@
+
 'use client';
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutGrid, PlusCircle, ShoppingCart, Settings, AlertTriangle } from 'lucide-react';
+import { LayoutGrid, PlusCircle, ShoppingCart, Settings, AlertTriangle, DollarSign, CreditCard } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -20,6 +21,8 @@ const navItemsBase = [
   { href: '/inventory', label: 'Inventory', icon: LayoutGrid },
   { href: '/inventory/add', label: 'Add Product', icon: PlusCircle },
   { href: '/pos', label: 'POS', icon: ShoppingCart },
+  { href: '/sales', label: 'Sales', icon: DollarSign },
+  { href: '/credit', label: 'Credit', icon: CreditCard },
 ];
 
 const bottomNavItemsBase = [
@@ -42,7 +45,7 @@ export function SidebarNav() {
           </div>
         </SidebarHeader>
         <SidebarContent className="flex-grow p-2 space-y-1">
-          {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-8 w-full rounded-md" />)}
+          {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-8 w-full rounded-md" />)}
         </SidebarContent>
         <SidebarFooter className="p-2 space-y-1">
           {[...Array(2)].map((_, i) => <Skeleton key={i} className="h-8 w-full rounded-md" />)}

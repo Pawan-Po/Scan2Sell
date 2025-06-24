@@ -15,17 +15,17 @@ import {
 } from '@/components/ui/table';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, MinusCircle, Trash2, ShoppingBag, CheckCircle, RotateCcw, Camera, Sparkles, AlertTriangle } from 'lucide-react';
-import type { Product, CartItem } from '@/lib/types';
+import { PlusCircle, MinusCircle, Trash2, ShoppingBag, CheckCircle, RotateCcw, Camera, Sparkles, AlertTriangle, CreditCard, DollarSign } from 'lucide-react';
+import type { Product, CartItem, SaleTransaction } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { ReceiptModal } from './receipt-modal';
 import Image from 'next/image';
 import { extractProductInfo, type ExtractProductInfoInput } from '@/ai/flows/extract-product-info-flow';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { fetchInventory } from '@/data/mock-data'; // Import fetchInventory
+import { fetchInventory, processSale } from '@/data/mock-data';
 
 interface POSClientProps {
-  inventory: Product[]; // This will be the initial inventory from the server
+  inventory: Product[];
 }
 
 export function POSClient({ inventory: initialInventory }: POSClientProps) {
@@ -33,8 +33,11 @@ export function POSClient({ inventory: initialInventory }: POSClientProps) {
   const [cart, setCart] = React.useState<CartItem[]>([]);
   const [selectedProductId, setSelectedProductId] = React.useState<string | undefined>(undefined);
   const { toast } = useToast();
+  
   const [isReceiptModalOpen, setIsReceiptModalOpen] = React.useState(false);
+  const [completedSale, setCompletedSale] = React.useState<SaleTransaction | null>(null);
 
+  const [isProcessingCheckout, setIsProcessingCheckout] = React.useState(false);
   const [isCameraOpen, setIsCameraOpen] = React.useState(false);
   const [hasCameraPermission, setHasCameraPermission] = React.useState<boolean | null>(null);
   const videoRef = React.useRef<HTMLVideoElement>(null);
@@ -42,17 +45,16 @@ export function POSClient({ inventory: initialInventory }: POSClientProps) {
   const [isAiScanning, setIsAiScanning] = React.useState(false);
   const [scannedPreviewImage, setScannedPreviewImage] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    // On client mount, fetch the latest inventory which might come from localStorage
-    async function loadClientInventory() {
-      const clientInventory = await fetchInventory();
-      setCurrentInventory(clientInventory);
-    }
-    if (typeof window !== 'undefined') { // Ensure this runs only on client
-      loadClientInventory();
-    }
-  }, []); // Empty dependency array: run once on mount
+  const refreshInventory = async () => {
+    const clientInventory = await fetchInventory();
+    setCurrentInventory(clientInventory);
+  };
 
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      refreshInventory();
+    }
+  }, []);
 
   React.useEffect(() => {
     if (isCameraOpen) {
@@ -143,7 +145,6 @@ export function POSClient({ inventory: initialInventory }: POSClientProps) {
     }
   };
 
-
   const handleAddToCart = () => {
     if (!selectedProductId) {
       toast({ title: 'No Product Selected', description: 'Please select a product to add.', variant: 'destructive' });
@@ -201,21 +202,40 @@ export function POSClient({ inventory: initialInventory }: POSClientProps) {
     return cart.reduce((sum, item) => sum + item.price * item.cartQuantity, 0);
   }, [cart]);
 
-  const handleCheckout = () => {
+  const handleCheckout = async (paymentMethod: 'cash' | 'credit') => {
     if (cart.length === 0) {
-      toast({ title: 'Empty Cart', description: 'Please add items to your cart before checkout.', variant: 'destructive' });
+      toast({ title: 'Empty Cart', description: 'Please add items to your cart.', variant: 'destructive' });
       return;
     }
-    // Here you would typically process payment and update inventory on the backend
-    // For this mock version, we'll just show the receipt
-    setIsReceiptModalOpen(true);
+    setIsProcessingCheckout(true);
+    try {
+      const sale = await processSale(cart, paymentMethod);
+      setCompletedSale(sale);
+      setIsReceiptModalOpen(true);
+      toast({
+        title: 'Checkout Successful!',
+        description: `Sale recorded with payment method: ${paymentMethod}.`,
+      });
+    } catch (error) {
+      console.error('Checkout failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+      toast({
+        title: 'Checkout Failed',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsProcessingCheckout(false);
+    }
   };
 
   const handleNewSale = () => {
     setCart([]);
     setIsReceiptModalOpen(false);
+    setCompletedSale(null);
     setSelectedProductId(undefined);
     setScannedPreviewImage(null);
+    refreshInventory(); // Refresh inventory for next sale
     toast({ title: 'New Sale Started', description: 'Cart has been cleared.'});
   }
 
@@ -231,7 +251,7 @@ export function POSClient({ inventory: initialInventory }: POSClientProps) {
           <div className="flex flex-col sm:flex-row gap-4 items-end">
             <div className="flex-grow space-y-1">
               <Label htmlFor="product-select">Select Product</Label>
-              <Select value={selectedProductId} onValueChange={setSelectedProductId} disabled={isCameraOpen || isAiScanning}>
+              <Select value={selectedProductId} onValueChange={setSelectedProductId} disabled={isCameraOpen || isAiScanning || isProcessingCheckout}>
                 <SelectTrigger id="product-select" aria-label="Select product">
                   <SelectValue placeholder="Scan or select a product..." />
                 </SelectTrigger>
@@ -244,10 +264,10 @@ export function POSClient({ inventory: initialInventory }: POSClientProps) {
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={handleToggleCamera} variant="outline" className="w-full sm:w-auto" disabled={isAiScanning}>
+            <Button onClick={handleToggleCamera} variant="outline" className="w-full sm:w-auto" disabled={isAiScanning || isProcessingCheckout}>
               <Camera className="mr-2 h-4 w-4" /> {isCameraOpen ? 'Close Camera' : 'Scan Label'}
             </Button>
-            <Button onClick={handleAddToCart} className="w-full sm:w-auto" disabled={!selectedProductId || isCameraOpen || isAiScanning}>
+            <Button onClick={handleAddToCart} className="w-full sm:w-auto" disabled={!selectedProductId || isCameraOpen || isAiScanning || isProcessingCheckout}>
               <PlusCircle className="mr-2 h-4 w-4" /> Add to Cart
             </Button>
           </div>
@@ -269,7 +289,7 @@ export function POSClient({ inventory: initialInventory }: POSClientProps) {
                   type="button" 
                   onClick={handleCaptureImage} 
                   className="w-full" 
-                  disabled={isAiScanning}
+                  disabled={isAiScanning || isProcessingCheckout}
                 >
                   {isAiScanning ? <RotateCcw className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" /> }
                   {isAiScanning ? 'Scanning...' : 'Capture & Scan Product'}
@@ -340,17 +360,15 @@ export function POSClient({ inventory: initialInventory }: POSClientProps) {
                                 const productInInv = currentInventory.find(p => p.id === item.id);
                                 if (productInInv && val > productInInv.quantity) {
                                    toast({ title: 'Stock Limit Exceeded', description: `Only ${productInInv.quantity} units of ${productInInv.name} available.`, variant: 'destructive' });
-                                   updateQuantity(item.id, productInInv.quantity); // Set to max available
+                                   updateQuantity(item.id, productInInv.quantity);
                                 } else {
                                    updateQuantity(item.id, val || 0)
                                 }
                             }}
-                            onBlur={(e) => { // Ensure quantity is not left empty or invalid
+                            onBlur={(e) => {
                                 if (item.cartQuantity === 0 && cart.find(ci => ci.id === item.id)) {
-                                    // If user blurs with 0, remove item or set to 1 if that's preferred. Here, removing.
-                                    // updateQuantity will handle removal if 0.
                                 } else if (isNaN(item.cartQuantity)) {
-                                    updateQuantity(item.id, 1); // Reset to 1 if invalid
+                                    updateQuantity(item.id, 1);
                                 }
                             }}
                             className="w-12 h-8 text-center px-1"
@@ -406,21 +424,32 @@ export function POSClient({ inventory: initialInventory }: POSClientProps) {
           </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-2">
-          <Button size="lg" className="w-full" onClick={handleCheckout} disabled={cart.length === 0 || isCameraOpen || isAiScanning}>
-            <CheckCircle className="mr-2 h-5 w-5" /> Checkout
-          </Button>
-           <Button size="lg" variant="outline" className="w-full" onClick={handleNewSale} disabled={isCameraOpen || isAiScanning}>
+            <Button size="lg" className="w-full" onClick={() => handleCheckout('cash')} disabled={cart.length === 0 || isCameraOpen || isAiScanning || isProcessingCheckout}>
+                {isProcessingCheckout ? <RotateCcw className="mr-2 h-5 w-5 animate-spin" /> : <DollarSign className="mr-2 h-5 w-5" />}
+                Pay with Cash
+            </Button>
+            <Button size="lg" variant="secondary" className="w-full" onClick={() => handleCheckout('credit')} disabled={cart.length === 0 || isCameraOpen || isAiScanning || isProcessingCheckout}>
+                {isProcessingCheckout ? <RotateCcw className="mr-2 h-5 w-5 animate-spin" /> : <CreditCard className="mr-2 h-5 w-5" />}
+                Pay on Credit
+            </Button>
+           <Button size="lg" variant="outline" className="w-full mt-4" onClick={handleNewSale} disabled={isCameraOpen || isAiScanning || isProcessingCheckout}>
             <RotateCcw className="mr-2 h-5 w-5" /> New Sale
           </Button>
         </CardFooter>
       </Card>
-
-      <ReceiptModal
-        isOpen={isReceiptModalOpen}
-        onOpenChange={setIsReceiptModalOpen}
-        cartItems={cart}
-        totalAmount={totalAmount}
-      />
+      
+      {completedSale && (
+        <ReceiptModal
+          isOpen={isReceiptModalOpen}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) {
+              handleNewSale();
+            }
+            setIsReceiptModalOpen(isOpen);
+          }}
+          transaction={completedSale}
+        />
+      )}
     </div>
   );
 }

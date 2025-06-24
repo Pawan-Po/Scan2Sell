@@ -27,3 +27,12 @@ export interface ProductFormData {
   description?: string;
   barcode?: string;
 }
+
+export interface SaleTransaction {
+  id: string;
+  date: string; // ISO string
+  items: CartItem[];
+  totalAmount: number;
+  paymentMethod: 'cash' | 'credit';
+  status: 'paid' | 'unpaid'; // For credit sales
+}

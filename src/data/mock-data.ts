@@ -1,9 +1,11 @@
 
-import type { Product } from '@/lib/types';
+import type { Product, SaleTransaction, CartItem } from '@/lib/types';
 
 const INVENTORY_STORAGE_KEY = 'scan2saleInventory';
+const SALES_STORAGE_KEY = 'scan2saleSales';
 
-// This is the hardcoded default inventory. Used if localStorage is empty or on server.
+// --- INVENTORY ---
+
 const initialDefaultInventory: Product[] = [
   {
     id: '1',
@@ -71,88 +73,130 @@ const initialDefaultInventory: Product[] = [
   },
 ];
 
-// This will be the in-memory "source of truth" for the session.
-// It's initialized from localStorage on the client, or defaults on the server.
 export let mockInventory: Product[];
-
 if (typeof window !== 'undefined') {
-  // Client-side execution
   const storedInventory = localStorage.getItem(INVENTORY_STORAGE_KEY);
-  if (storedInventory) {
-    try {
-      mockInventory = JSON.parse(storedInventory);
-      // Ensure all products have necessary fields if migrating from an older structure
-      mockInventory.forEach(p => {
-        p.lowStockThreshold = p.lowStockThreshold || 5;
-        p.category = p.category || 'Uncategorized';
-        p.dataAiHint = p.dataAiHint || (p.imageUrl ? undefined : 'product generic');
-      });
-    } catch (e) {
-      console.error("Failed to parse inventory from localStorage, resetting to default.", e);
-      mockInventory = JSON.parse(JSON.stringify(initialDefaultInventory)); // Deep copy
-      localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(mockInventory));
-    }
-  } else {
-    // No inventory in localStorage, use default and save it
-    mockInventory = JSON.parse(JSON.stringify(initialDefaultInventory)); // Deep copy
-    localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(mockInventory));
-  }
+  mockInventory = storedInventory ? JSON.parse(storedInventory) : JSON.parse(JSON.stringify(initialDefaultInventory));
+  localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(mockInventory));
 } else {
-  // Server-side execution (e.g., during build or for SSR)
-  mockInventory = JSON.parse(JSON.stringify(initialDefaultInventory)); // Deep copy
+  mockInventory = JSON.parse(JSON.stringify(initialDefaultInventory));
 }
 
-function saveCurrentInventoryToStorage() {
+function saveInventoryToStorage() {
   if (typeof window !== 'undefined') {
     localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(mockInventory));
   }
 }
 
-// This function simulates fetching data from a backend
 export async function fetchInventory(): Promise<Product[]> {
-  // Simulate API delay
   await new Promise(resolve => setTimeout(resolve, 50));
-  // Returns a deep copy of the current in-memory inventory
-  // (which is localStorage-aware on client, default on server)
   return JSON.parse(JSON.stringify(mockInventory));
 }
 
-// Simulate adding a product
 export async function addProductToInventory(productData: Omit<Product, 'id'>): Promise<Product> {
   await new Promise(resolve => setTimeout(resolve, 50));
   const newProduct: Product = {
     ...productData,
-    id: String(Date.now() + Math.random().toString(36).substring(2, 9)), // More robust unique ID
-    // Ensure default fields if not provided
+    id: String(Date.now() + Math.random().toString(36).substring(2, 9)),
     lowStockThreshold: productData.lowStockThreshold || 5,
     category: productData.category || 'General',
     dataAiHint: productData.dataAiHint || (productData.imageUrl ? undefined : 'product generic')
   };
   mockInventory.push(newProduct);
-  saveCurrentInventoryToStorage();
-  console.log('Added product:', newProduct);
-  console.log('Current inventory size (in-memory):', mockInventory.length);
+  saveInventoryToStorage();
   return JSON.parse(JSON.stringify(newProduct));
 }
 
-// Simulate updating a product
 export async function updateProductInInventory(updatedProduct: Product): Promise<Product> {
   await new Promise(resolve => setTimeout(resolve, 50));
   const index = mockInventory.findIndex(p => p.id === updatedProduct.id);
   if (index !== -1) {
     mockInventory[index] = { ...mockInventory[index], ...updatedProduct };
-    saveCurrentInventoryToStorage();
-    console.log('Updated product:', mockInventory[index]);
+    saveInventoryToStorage();
     return JSON.parse(JSON.stringify(mockInventory[index]));
   }
-  console.error("Product not found for update, ID:", updatedProduct.id);
   throw new Error("Product not found for update");
 }
 
-// Function to reset mock inventory to its initial state (also updates localStorage)
-export async function resetMockInventory(): Promise<void> {
+
+// --- SALES ---
+
+export let mockSales: SaleTransaction[];
+if (typeof window !== 'undefined') {
+  const storedSales = localStorage.getItem(SALES_STORAGE_KEY);
+  mockSales = storedSales ? JSON.parse(storedSales) : [];
+  localStorage.setItem(SALES_STORAGE_KEY, JSON.stringify(mockSales));
+} else {
+  mockSales = [];
+}
+
+function saveSalesToStorage() {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(SALES_STORAGE_KEY, JSON.stringify(mockSales));
+  }
+}
+
+export async function fetchSales(): Promise<SaleTransaction[]> {
   await new Promise(resolve => setTimeout(resolve, 50));
-  mockInventory = JSON.parse(JSON.stringify(initialDefaultInventory)); // Reset to a deep copy of the defaults
-  saveCurrentInventoryToStorage(); // Save the reset state to localStorage
-  console.log('Mock inventory reset to defaults and saved to localStorage.');
+  return JSON.parse(JSON.stringify(mockSales));
+}
+
+export async function processSale(cart: CartItem[], paymentMethod: 'cash' | 'credit'): Promise<SaleTransaction> {
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // 1. Validate stock and update inventory
+    for (const item of cart) {
+        const productInStock = mockInventory.find(p => p.id === item.id);
+        if (!productInStock) {
+            throw new Error(`Product ${item.name} not found in inventory.`);
+        }
+        if (productInStock.quantity < item.cartQuantity) {
+            throw new Error(`Not enough stock for ${item.name}. Available: ${productInStock.quantity}, Requested: ${item.cartQuantity}`);
+        }
+        productInStock.quantity -= item.cartQuantity;
+    }
+
+    // 2. Create sale transaction record
+    const totalAmount = cart.reduce((sum, item) => sum + item.price * item.cartQuantity, 0);
+    const newSale: SaleTransaction = {
+        id: String(Date.now() + Math.random().toString(36).substring(2, 9)),
+        date: new Date().toISOString(),
+        items: cart,
+        totalAmount,
+        paymentMethod,
+        status: paymentMethod === 'credit' ? 'unpaid' : 'paid',
+    };
+    mockSales.unshift(newSale); // Add to the beginning of the list
+
+    // 3. Save both stores
+    saveInventoryToStorage();
+    saveSalesToStorage();
+
+    return JSON.parse(JSON.stringify(newSale));
+}
+
+export async function updateCreditSaleToPaid(saleId: string): Promise<SaleTransaction> {
+    await new Promise(resolve => setTimeout(resolve, 50));
+    const saleIndex = mockSales.findIndex(s => s.id === saleId);
+    if (saleIndex === -1) {
+        throw new Error("Sale not found.");
+    }
+    if (mockSales[saleIndex].paymentMethod !== 'credit') {
+        throw new Error("This is not a credit sale.");
+    }
+    mockSales[saleIndex].status = 'paid';
+    saveSalesToStorage();
+    return JSON.parse(JSON.stringify(mockSales[saleIndex]));
+}
+
+// --- RESET ALL ---
+
+export async function resetMockData(): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, 50));
+  mockInventory = JSON.parse(JSON.stringify(initialDefaultInventory));
+  mockSales = [];
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(mockInventory));
+    localStorage.setItem(SALES_STORAGE_KEY, JSON.stringify(mockSales));
+  }
 }
