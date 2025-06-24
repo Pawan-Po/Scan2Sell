@@ -134,22 +134,44 @@ export function AddProductFormClient() {
     }
   };
 
-  const handleCaptureImage = () => {
-    if (videoRef.current && canvasRef.current) {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const context = canvas.getContext('2d');
-      if (context) {
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUri = canvas.toDataURL('image/png');
-        setPreviewImage(dataUri);
-        setIsCameraOpen(false); // Close camera after capture
-        toast({ title: "Image Captured!", description: "The product image has been set."});
+  const handleCaptureAndScanBarcode = React.useCallback(async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUri = canvas.toDataURL('image/png');
+
+    // Set the image for preview
+    setPreviewImage(dataUri);
+    // Close camera
+    setIsCameraOpen(false);
+    
+    // Immediately start OCR process
+    setIsOcrProcessing(true);
+    toast({ title: "Image captured. Now scanning for barcode..." });
+
+    try {
+      const result = await extractBarcode({ productLabelDataUri: dataUri });
+      if (result.barcode) {
+        setValue('barcode', result.barcode);
+        toast({ title: 'Barcode Scanned!', description: `Found barcode: ${result.barcode}` });
+      } else {
+        setValue('barcode', '');
+        toast({ title: 'No Barcode Found', description: 'Could not detect a barcode in the image.', variant: 'destructive' });
       }
+    } catch (error) {
+      console.error('OCR failed:', error);
+      toast({ title: 'OCR Error', description: 'Failed to scan barcode from image.', variant: 'destructive' });
+    } finally {
+      setIsOcrProcessing(false);
     }
-  };
+  }, [setValue, toast]);
 
   const handleEnhanceDescription = React.useCallback(async () => {
     if (!previewImage) {
@@ -283,8 +305,8 @@ export function AddProductFormClient() {
                   </Alert>
               )}
               {hasCameraPermission === true && (
-                <Button type="button" onClick={handleCaptureImage} className="w-full" disabled={isProcessing}>
-                  <Camera className="mr-2 h-4 w-4" /> Capture Image
+                <Button type="button" onClick={handleCaptureAndScanBarcode} className="w-full" disabled={isProcessing}>
+                  <Barcode className="mr-2 h-4 w-4" /> Capture & Scan Barcode
                 </Button>
               )}
             </div>
@@ -336,7 +358,7 @@ export function AddProductFormClient() {
                     {isOcrProcessing ? <RotateCcw className="h-4 w-4 animate-spin" /> : <Barcode className="h-4 w-4" />}
                 </Button>
             </div>
-            <p className="text-xs text-muted-foreground">Upload or capture an image, then click the barcode icon to scan.</p>
+            <p className="text-xs text-muted-foreground">Upload an image, then click the barcode icon to scan.</p>
             {errors.barcode && <p className="text-sm text-destructive">{errors.barcode.message}</p>}
           </div>
 
@@ -378,5 +400,7 @@ export function AddProductFormClient() {
     </Card>
   );
 }
+
+    
 
     
