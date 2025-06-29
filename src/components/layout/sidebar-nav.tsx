@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutGrid, PlusCircle, ShoppingCart, Settings, AlertTriangle, DollarSign, CreditCard, MoreHorizontal } from 'lucide-react';
+import { LayoutGrid, PlusCircle, ShoppingCart, Settings, AlertTriangle, DollarSign, CreditCard, MoreHorizontal, LineChart } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -23,6 +23,7 @@ const navItemsBase = [
   { href: '/pos', label: 'POS', icon: ShoppingCart },
   { href: '/sales', label: 'Sales', icon: DollarSign },
   { href: '/credit', label: 'Credit', icon: CreditCard },
+  { href: '/reports', label: 'Reports', icon: LineChart },
 ];
 
 const bottomNavItemsBase = [
@@ -90,7 +91,7 @@ function DesktopSidebar() {
 function MobileBottomNav() {
     const pathname = usePathname();
     const mainNavItems = navItemsBase.slice(0, 4);
-    const moreNavItems = [navItemsBase[4], ...bottomNavItemsBase];
+    const moreNavItems = [...navItemsBase.slice(4), ...bottomNavItemsBase];
 
     return (
         <nav className="md:hidden fixed bottom-0 left-0 z-50 w-full h-16 bg-background border-t border-border">
