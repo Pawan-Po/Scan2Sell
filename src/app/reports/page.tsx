@@ -6,11 +6,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { fetchSales } from '@/data/mock-data';
 import type { SaleTransaction } from '@/lib/types';
-import { LineChart, DollarSign, ShoppingBag } from 'lucide-react';
-import { format } from 'date-fns';
+import { LineChart, DollarSign, ShoppingBag, CreditCard, Calendar as CalendarIcon } from 'lucide-react';
+import { format, subDays } from 'date-fns';
 import {
   BarChart,
   Bar,
+  PieChart,
+  Pie,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -19,12 +22,21 @@ import {
   ResponsiveContainer,
   LabelList,
 } from 'recharts';
-
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
 } from '@/components/ui/chart';
+import { Button } from '@/components/ui/button';
+import { Calendar } from '@/components/ui/calendar';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import type { DateRange } from 'react-day-picker';
+import { cn } from '@/lib/utils';
+
 
 interface DailySales {
   date: string;
@@ -36,9 +48,19 @@ interface ProductSales {
   Quantity: number;
 }
 
+interface PaymentMethodData {
+    name: string;
+    value: number;
+    fill: string;
+}
+
 export default function ReportsPage() {
   const [sales, setSales] = React.useState<SaleTransaction[] | null>(null);
   const [dataLoading, setDataLoading] = React.useState(true);
+  const [dateRange, setDateRange] = React.useState<DateRange | undefined>({
+    from: subDays(new Date(), 29),
+    to: new Date(),
+  });
 
   React.useEffect(() => {
     const loadData = async () => {
@@ -51,13 +73,27 @@ export default function ReportsPage() {
   }, []);
 
   const reportData = React.useMemo(() => {
-    if (!sales || sales.length === 0) return null;
+    if (!sales) return null;
 
-    const totalRevenue = sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
-    const totalSales = sales.length;
-    const averageSaleValue = totalSales > 0 ? totalRevenue / totalSales : 0;
+    const filteredSales = sales.filter(sale => {
+      if (!dateRange?.from) return true;
+      const saleDate = new Date(sale.date);
+      // Set hours to include full days in the range
+      const from = new Date(dateRange.from.setHours(0, 0, 0, 0));
+      const to = dateRange.to ? new Date(dateRange.to.setHours(23, 59, 59, 999)) : from;
+      return saleDate >= from && saleDate <= to;
+    });
+    
+    const paidSales = filteredSales.filter(s => s.status === 'paid');
 
-    const salesByDay: Record<string, number> = sales.reduce((acc, sale) => {
+    const totalRevenue = paidSales.reduce((sum, sale) => sum + sale.totalAmount, 0);
+    const totalTransactions = paidSales.length;
+    const averageSaleValue = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
+    
+    // Outstanding credit is calculated from ALL sales, not just the filtered ones, as it's a snapshot of total debt.
+    const outstandingCredit = sales.filter(s => s.status === 'unpaid').reduce((sum, sale) => sum + sale.totalAmount, 0);
+
+    const salesByDay: Record<string, number> = paidSales.reduce((acc, sale) => {
       const day = format(new Date(sale.date), 'yyyy-MM-dd');
       acc[day] = (acc[day] || 0) + sale.totalAmount;
       return acc;
@@ -70,7 +106,7 @@ export default function ReportsPage() {
       }))
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    const productPerformance: Record<string, { name: string; quantity: number }> = sales
+    const productPerformance: Record<string, { name: string; quantity: number }> = paidSales
       .flatMap(sale => sale.items)
       .reduce((acc, item) => {
         if (!acc[item.id]) {
@@ -85,25 +121,42 @@ export default function ReportsPage() {
       .slice(0, 5)
       .map(p => ({ name: p.name, Quantity: p.quantity }));
 
+    const paymentMethods = paidSales.reduce((acc, sale) => {
+      const method = sale.paymentMethod.charAt(0).toUpperCase() + sale.paymentMethod.slice(1);
+      acc[method] = (acc[method] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const paymentMethodData: PaymentMethodData[] = [
+        { name: 'Cash', value: paymentMethods.Cash || 0, fill: 'hsl(var(--chart-1))' },
+        { name: 'Credit', value: paymentMethods.Credit || 0, fill: 'hsl(var(--chart-2))' },
+    ].filter(p => p.value > 0);
+
+
     return {
       totalRevenue,
-      totalSales,
+      totalTransactions,
       averageSaleValue,
+      outstandingCredit,
       dailySalesChartData,
       topSellingProducts,
+      paymentMethodData,
+      hasData: paidSales.length > 0,
     };
-  }, [sales]);
+  }, [sales, dateRange]);
 
 
   if (dataLoading) {
     return (
       <AppLayout>
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
           <h1 className="text-3xl font-headline font-bold flex items-center">
             <LineChart className="mr-3 h-8 w-8 text-primary" /> Reports & Analytics
           </h1>
+          <Skeleton className="h-10 w-full sm:w-64" />
         </div>
-        <div className="grid gap-4 md:grid-cols-3 mb-8">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
+          <Skeleton className="h-32 w-full" />
           <Skeleton className="h-32 w-full" />
           <Skeleton className="h-32 w-full" />
           <Skeleton className="h-32 w-full" />
@@ -116,7 +169,7 @@ export default function ReportsPage() {
     );
   }
 
-  if (!reportData) {
+  if (!reportData) { // This case handles when sales data is fetched but is null/empty
     return (
        <AppLayout>
          <div className="flex items-center justify-between mb-6">
@@ -135,13 +188,51 @@ export default function ReportsPage() {
 
   return (
     <AppLayout>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-headline font-bold flex items-center">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+        <h1 className="text-3xl font-headline font-bold flex items-center shrink-0">
           <LineChart className="mr-3 h-8 w-8 text-primary" /> Reports & Analytics
         </h1>
+        <div className="w-full sm:w-auto">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                id="date"
+                variant={"outline"}
+                className={cn(
+                  "w-full sm:w-[260px] justify-start text-left font-normal",
+                  !dateRange && "text-muted-foreground"
+                )}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {dateRange?.from ? (
+                  dateRange.to ? (
+                    <>
+                      {format(dateRange.from, "LLL dd, y")} -{" "}
+                      {format(dateRange.to, "LLL dd, y")}
+                    </>
+                  ) : (
+                    format(dateRange.from, "LLL dd, y")
+                  )
+                ) : (
+                  <span>Pick a date</span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <Calendar
+                initialFocus
+                mode="range"
+                defaultMonth={dateRange?.from}
+                selected={dateRange}
+                onSelect={setDateRange}
+                numberOfMonths={2}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3 mb-8">
+       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
@@ -149,102 +240,125 @@ export default function ReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">${reportData.totalRevenue.toFixed(2)}</div>
+            <p className="text-xs text-muted-foreground">From paid transactions in selected period</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Sales</CardTitle>
+            <CardTitle className="text-sm font-medium">Paid Transactions</CardTitle>
             <ShoppingBag className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{reportData.totalSales}</div>
+            <div className="text-2xl font-bold">{reportData.totalTransactions}</div>
+             <p className="text-xs text-muted-foreground">In selected period</p>
           </CardContent>
         </Card>
-        <Card>
+         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Average Sale Value</CardTitle>
              <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">${reportData.averageSaleValue.toFixed(2)}</div>
+             <p className="text-xs text-muted-foreground">For paid transactions</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Outstanding Credit</CardTitle>
+            <CreditCard className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-destructive">${reportData.outstandingCredit.toFixed(2)}</div>
+             <p className="text-xs text-muted-foreground">Total across all time</p>
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid gap-8 md:grid-cols-1 lg:grid-cols-2">
-         <Card>
-          <CardHeader>
-            <CardTitle>Daily Sales Revenue</CardTitle>
-          </CardHeader>
-          <CardContent className="pl-2">
-            <ChartContainer config={{
-                Sales: {
-                    label: "Sales",
-                    color: "hsl(var(--primary))",
-                },
-            }} className="h-[300px] w-full">
-              <ResponsiveContainer>
-                <BarChart data={reportData.dailySalesChartData} margin={{ top: 20 }}>
-                  <CartesianGrid vertical={false} />
-                  <XAxis
-                    dataKey="date"
-                    tickLine={false}
-                    tickMargin={10}
-                    axisLine={false}
-                  />
-                  <YAxis
-                    tickFormatter={(value) => `$${value}`}
-                  />
-                  <Tooltip
-                    cursor={{ fill: 'hsl(var(--muted))' }}
-                    content={<ChartTooltipContent indicator="dot" />}
-                  />
-                  <Bar dataKey="Sales" fill="hsl(var(--primary))" radius={4}>
-                     <LabelList dataKey="Sales" position="top" offset={8} className="fill-foreground" fontSize={12} formatter={(value: number) => `$${value.toFixed(0)}`} />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartContainer>
-          </CardContent>
-        </Card>
-        
+    {!reportData.hasData ? (
         <Card>
-          <CardHeader>
-            <CardTitle>Top 5 Selling Products</CardTitle>
-          </CardHeader>
-          <CardContent className="pr-0 pl-2">
-            <ChartContainer config={{
-                Quantity: {
-                    label: "Quantity",
-                    color: "hsl(var(--accent))",
-                },
-            }} className="h-[300px] w-full">
-               <ResponsiveContainer>
-                <BarChart data={reportData.topSellingProducts} layout="vertical" margin={{ left: 10, right: 30 }}>
-                   <CartesianGrid horizontal={false} />
-                  <XAxis type="number" hide />
-                  <YAxis
-                    dataKey="name"
-                    type="category"
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={5}
-                    width={110}
-                    tickFormatter={(value) => value.length > 15 ? `${value.substring(0, 14)}...` : value}
-                  />
-                  <Tooltip
-                    cursor={{ fill: 'hsl(var(--muted))' }}
-                    content={<ChartTooltipContent indicator="dot" />}
-                  />
-                  <Bar dataKey="Quantity" fill="hsl(var(--accent))" radius={4}>
-                    <LabelList dataKey="Quantity" position="right" offset={8} className="fill-foreground" fontSize={12} />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartContainer>
-          </CardContent>
+            <CardContent className="pt-6">
+                <p className="text-center text-muted-foreground">No data available for the selected date range.</p>
+            </CardContent>
+        </Card>
+    ) : (
+      <div className="grid gap-8 mt-8 grid-cols-1 lg:grid-cols-2 xl:grid-cols-5">
+        <Card className="lg:col-span-1 xl:col-span-3">
+            <CardHeader>
+                <CardTitle>Daily Sales Revenue</CardTitle>
+                 <p className="text-sm text-muted-foreground">For paid transactions in selected period</p>
+            </CardHeader>
+            <CardContent className="pl-2">
+                <ChartContainer config={{
+                    Sales: { label: "Sales", color: "hsl(var(--chart-1))" },
+                }} className="h-[300px] w-full">
+                <ResponsiveContainer>
+                    <BarChart data={reportData.dailySalesChartData} margin={{ top: 20 }}>
+                    <CartesianGrid vertical={false} />
+                    <XAxis dataKey="date" tickLine={false} tickMargin={10} axisLine={false} />
+                    <YAxis tickFormatter={(value) => `$${value}`} />
+                    <Tooltip cursor={{ fill: 'hsl(var(--muted))' }} content={<ChartTooltipContent indicator="dot" />} />
+                    <Bar dataKey="Sales" fill="hsl(var(--chart-1))" radius={4}>
+                        <LabelList dataKey="Sales" position="top" offset={8} className="fill-foreground" fontSize={12} formatter={(value: number) => `$${value.toFixed(0)}`} />
+                    </Bar>
+                    </BarChart>
+                </ResponsiveContainer>
+                </ChartContainer>
+            </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-1 xl:col-span-2">
+            <CardHeader>
+                <CardTitle>Payment Methods</CardTitle>
+                <p className="text-sm text-muted-foreground">For paid transactions in selected period</p>
+            </CardHeader>
+            <CardContent className="flex-1 pb-0">
+                 <ChartContainer config={{
+                    cash: { label: "Cash", color: "hsl(var(--chart-1))"},
+                    credit: { label: "Credit (Paid)", color: "hsl(var(--chart-2))"},
+                 }} className="mx-auto aspect-square h-full max-h-[300px]">
+                    <ResponsiveContainer>
+                        <PieChart>
+                             <Tooltip content={<ChartTooltipContent hideLabel />} />
+                            <Pie data={reportData.paymentMethodData} dataKey="value" nameKey="name" innerRadius="30%">
+                                {reportData.paymentMethodData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                                ))}
+                            </Pie>
+                             <Legend />
+                        </PieChart>
+                    </ResponsiveContainer>
+                 </ChartContainer>
+            </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2 xl:col-span-5">
+            <CardHeader>
+                <CardTitle>Top 5 Selling Products</CardTitle>
+                 <p className="text-sm text-muted-foreground">By quantity sold in selected period</p>
+            </CardHeader>
+            <CardContent className="pr-0 pl-2">
+                <ChartContainer config={{
+                    Quantity: { label: "Quantity", color: "hsl(var(--chart-2))" },
+                }} className="h-[300px] w-full">
+                <ResponsiveContainer>
+                    <BarChart data={reportData.topSellingProducts} layout="vertical" margin={{ left: 10, right: 30 }}>
+                    <CartesianGrid horizontal={false} />
+                    <XAxis type="number" hide />
+                    <YAxis dataKey="name" type="category" tickLine={false} axisLine={false} tickMargin={5} width={110} tickFormatter={(value) => value.length > 15 ? `${value.substring(0, 14)}...` : value} />
+                    <Tooltip cursor={{ fill: 'hsl(var(--muted))' }} content={<ChartTooltipContent indicator="dot" />} />
+                    <Bar dataKey="Quantity" fill="hsl(var(--chart-2))" radius={4}>
+                        <LabelList dataKey="Quantity" position="right" offset={8} className="fill-foreground" fontSize={12} />
+                    </Bar>
+                    </BarChart>
+                </ResponsiveContainer>
+                </ChartContainer>
+            </CardContent>
         </Card>
       </div>
+    )}
     </AppLayout>
   );
 }
+
+    
