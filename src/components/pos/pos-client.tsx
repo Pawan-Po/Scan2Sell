@@ -98,29 +98,28 @@ export function POSClient({ inventory: initialInventory }: POSClientProps) {
 
 
   const addItemToCart = React.useCallback((productToAdd: Product) => {
-     setCart(prevCart => {
-      const existingItem = prevCart.find(item => item.id === productToAdd.id);
-      if (existingItem) {
-        if (existingItem.cartQuantity < productToAdd.quantity) {
-          toast({ title: 'Item Incremented', description: `${productToAdd.name} quantity increased in cart.`});
-          return prevCart.map(item =>
+    const existingItem = cart.find(item => item.id === productToAdd.id);
+
+    if (existingItem) {
+      if (existingItem.cartQuantity < productToAdd.quantity) {
+        toast({ title: 'Item Incremented', description: `${productToAdd.name} quantity increased in cart.`});
+        setCart(prevCart =>
+          prevCart.map(item =>
             item.id === productToAdd.id ? { ...item, cartQuantity: item.cartQuantity + 1 } : item
-          );
-        } else {
-          toast({ title: 'Stock Limit Reached', description: `Cannot add more ${productToAdd.name}. Available: ${productToAdd.quantity}`, variant: 'destructive' });
-          return prevCart;
-        }
+          )
+        );
       } else {
-        if (1 <= productToAdd.quantity) {
-          toast({ title: 'Item Added', description: `${productToAdd.name} added to cart.`});
-          return [...prevCart, { ...productToAdd, cartQuantity: 1 }];
-        } else {
-          toast({ title: 'Out of Stock', description: `${productToAdd.name} is out of stock.`, variant: 'destructive' });
-          return prevCart;
-        }
+        toast({ title: 'Stock Limit Reached', description: `Cannot add more ${productToAdd.name}. Available: ${productToAdd.quantity}`, variant: 'destructive' });
       }
-    });
-  }, [toast]);
+    } else {
+      if (1 <= productToAdd.quantity) {
+        toast({ title: 'Item Added', description: `${productToAdd.name} added to cart.`});
+        setCart(prevCart => [...prevCart, { ...productToAdd, cartQuantity: 1 }]);
+      } else {
+        toast({ title: 'Out of Stock', description: `${productToAdd.name} is out of stock.`, variant: 'destructive' });
+      }
+    }
+  }, [cart, toast]);
 
   const handleBarcodeAdd = () => {
     if (!barcode) {
