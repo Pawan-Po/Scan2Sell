@@ -36,3 +36,11 @@ export interface SaleTransaction {
   paymentMethod: 'cash' | 'credit';
   status: 'paid' | 'unpaid'; // For credit sales
 }
+
+export interface Expense {
+  id: string;
+  date: string; // ISO string
+  description: string;
+  amount: number;
+  category: string;
+}

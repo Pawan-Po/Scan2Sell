@@ -1,8 +1,9 @@
 
-import type { Product, SaleTransaction, CartItem } from '@/lib/types';
+import type { Product, SaleTransaction, CartItem, Expense } from '@/lib/types';
 
 const INVENTORY_STORAGE_KEY = 'scan2saleInventory';
 const SALES_STORAGE_KEY = 'scan2saleSales';
+const EXPENSES_STORAGE_KEY = 'scan2saleExpenses';
 
 // --- INVENTORY ---
 
@@ -189,14 +190,52 @@ export async function updateCreditSaleToPaid(saleId: string): Promise<SaleTransa
     return JSON.parse(JSON.stringify(mockSales[saleIndex]));
 }
 
+// --- EXPENSES ---
+
+export let mockExpenses: Expense[];
+if (typeof window !== 'undefined') {
+  const storedExpenses = localStorage.getItem(EXPENSES_STORAGE_KEY);
+  mockExpenses = storedExpenses ? JSON.parse(storedExpenses) : [];
+  localStorage.setItem(EXPENSES_STORAGE_KEY, JSON.stringify(mockExpenses));
+} else {
+  mockExpenses = [];
+}
+
+function saveExpensesToStorage() {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(EXPENSES_STORAGE_KEY, JSON.stringify(mockExpenses));
+  }
+}
+
+export async function fetchExpenses(): Promise<Expense[]> {
+  await new Promise(resolve => setTimeout(resolve, 50));
+  // Return sorted by most recent first
+  return JSON.parse(JSON.stringify(mockExpenses)).sort((a: Expense, b: Expense) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}
+
+export async function addExpense(expenseData: Omit<Expense, 'id' | 'date'>): Promise<Expense> {
+  await new Promise(resolve => setTimeout(resolve, 50));
+  const newExpense: Expense = {
+    ...expenseData,
+    id: String(Date.now() + Math.random().toString(36).substring(2, 9)),
+    date: new Date().toISOString(),
+  };
+  mockExpenses.push(newExpense);
+  saveExpensesToStorage();
+  return JSON.parse(JSON.stringify(newExpense));
+}
+
+
 // --- RESET ALL ---
 
 export async function resetMockData(): Promise<void> {
   await new Promise(resolve => setTimeout(resolve, 50));
   mockInventory = JSON.parse(JSON.stringify(initialDefaultInventory));
   mockSales = [];
+  mockExpenses = [];
   if (typeof window !== 'undefined') {
     localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(mockInventory));
     localStorage.setItem(SALES_STORAGE_KEY, JSON.stringify(mockSales));
+    localStorage.setItem(EXPENSES_STORAGE_KEY, JSON.stringify(mockExpenses));
   }
 }

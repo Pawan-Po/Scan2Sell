@@ -4,9 +4,9 @@ import * as React from 'react';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { fetchSales } from '@/data/mock-data';
-import type { SaleTransaction } from '@/lib/types';
-import { LineChart, DollarSign, ShoppingBag, CreditCard, Calendar as CalendarIcon } from 'lucide-react';
+import { fetchSales, fetchExpenses } from '@/data/mock-data';
+import type { SaleTransaction, Expense } from '@/lib/types';
+import { LineChart, DollarSign, ShoppingBag, CreditCard, Calendar as CalendarIcon, Receipt, Scale } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import {
   BarChart,
@@ -56,6 +56,7 @@ interface PaymentMethodData {
 
 export default function ReportsPage() {
   const [sales, setSales] = React.useState<SaleTransaction[] | null>(null);
+  const [expenses, setExpenses] = React.useState<Expense[] | null>(null);
   const [dataLoading, setDataLoading] = React.useState(true);
   const [dateRange, setDateRange] = React.useState<DateRange | undefined>({
     from: subDays(new Date(), 29),
@@ -65,24 +66,32 @@ export default function ReportsPage() {
   React.useEffect(() => {
     const loadData = async () => {
       setDataLoading(true);
-      const fetchedSales = await fetchSales();
+      const [fetchedSales, fetchedExpenses] = await Promise.all([
+        fetchSales(),
+        fetchExpenses()
+      ]);
       setSales(fetchedSales);
+      setExpenses(fetchedExpenses);
       setDataLoading(false);
     };
     loadData();
   }, []);
 
   const reportData = React.useMemo(() => {
-    if (!sales) return null;
+    if (!sales || !expenses) return null;
 
-    const filteredSales = sales.filter(sale => {
-      if (!dateRange?.from) return true;
-      const saleDate = new Date(sale.date);
-      // Set hours to include full days in the range
-      const from = new Date(dateRange.from.setHours(0, 0, 0, 0));
-      const to = dateRange.to ? new Date(dateRange.to.setHours(23, 59, 59, 999)) : from;
-      return saleDate >= from && saleDate <= to;
-    });
+    const filterByDateRange = (items: (SaleTransaction | Expense)[]) => {
+        if (!dateRange?.from) return items;
+        return items.filter(item => {
+            const itemDate = new Date(item.date);
+            const from = new Date(dateRange.from!.setHours(0, 0, 0, 0));
+            const to = dateRange.to ? new Date(dateRange.to.setHours(23, 59, 59, 999)) : from;
+            return itemDate >= from && itemDate <= to;
+        });
+    };
+
+    const filteredSales = filterByDateRange(sales) as SaleTransaction[];
+    const filteredExpenses = filterByDateRange(expenses) as Expense[];
     
     const paidSales = filteredSales.filter(s => s.status === 'paid');
 
@@ -90,8 +99,11 @@ export default function ReportsPage() {
     const totalTransactions = paidSales.length;
     const averageSaleValue = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
     
-    // Outstanding credit is calculated from ALL sales, not just the filtered ones, as it's a snapshot of total debt.
+    // Outstanding credit is calculated from ALL sales, not just the filtered ones
     const outstandingCredit = sales.filter(s => s.status === 'unpaid').reduce((sum, sale) => sum + sale.totalAmount, 0);
+
+    const totalExpenses = filteredExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+    const netProfit = totalRevenue - totalExpenses;
 
     const salesByDay: Record<string, number> = paidSales.reduce((acc, sale) => {
       const day = format(new Date(sale.date), 'yyyy-MM-dd');
@@ -138,12 +150,14 @@ export default function ReportsPage() {
       totalTransactions,
       averageSaleValue,
       outstandingCredit,
+      totalExpenses,
+      netProfit,
       dailySalesChartData,
       topSellingProducts,
       paymentMethodData,
-      hasData: paidSales.length > 0,
+      hasData: paidSales.length > 0 || filteredExpenses.length > 0,
     };
-  }, [sales, dateRange]);
+  }, [sales, expenses, dateRange]);
 
 
   if (dataLoading) {
@@ -155,7 +169,9 @@ export default function ReportsPage() {
           </h1>
           <Skeleton className="h-10 w-full sm:w-64" />
         </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 mb-8">
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
           <Skeleton className="h-32 w-full" />
           <Skeleton className="h-32 w-full" />
           <Skeleton className="h-32 w-full" />
@@ -179,7 +195,7 @@ export default function ReportsPage() {
         </div>
         <Card>
             <CardContent className="pt-6">
-                <p className="text-center text-muted-foreground">No sales data available to generate reports.</p>
+                <p className="text-center text-muted-foreground">No data available to generate reports.</p>
             </CardContent>
         </Card>
       </AppLayout>
@@ -232,7 +248,7 @@ export default function ReportsPage() {
         </div>
       </div>
 
-       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
+       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 mb-8">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
@@ -240,7 +256,29 @@ export default function ReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">${reportData.totalRevenue.toFixed(2)}</div>
-            <p className="text-xs text-muted-foreground">From paid transactions in selected period</p>
+            <p className="text-xs text-muted-foreground">From paid transactions</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Expenses</CardTitle>
+            <Receipt className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-destructive">${reportData.totalExpenses.toFixed(2)}</div>
+            <p className="text-xs text-muted-foreground">In selected period</p>
+          </CardContent>
+        </Card>
+         <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Net Profit</CardTitle>
+            <Scale className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${reportData.netProfit >= 0 ? 'text-primary' : 'text-destructive'}`}>
+                ${reportData.netProfit.toFixed(2)}
+            </div>
+             <p className="text-xs text-muted-foreground">Revenue - Expenses</p>
           </CardContent>
         </Card>
         <Card>
@@ -255,7 +293,7 @@ export default function ReportsPage() {
         </Card>
          <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Average Sale Value</CardTitle>
+            <CardTitle className="text-sm font-medium">Average Sale</CardTitle>
              <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -360,5 +398,3 @@ export default function ReportsPage() {
     </AppLayout>
   );
 }
-
-    
