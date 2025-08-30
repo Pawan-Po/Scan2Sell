@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutGrid, PlusCircle, ShoppingCart, Settings, AlertTriangle, DollarSign, CreditCard, MoreHorizontal, LineChart, Receipt } from 'lucide-react';
+import { LayoutGrid, PlusCircle, ShoppingCart, Settings, AlertTriangle, DollarSign, CreditCard, MoreHorizontal, LineChart, Receipt, BrainCircuit } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -25,6 +25,7 @@ const navItemsBase = [
   { href: '/credit', label: 'Credit', icon: CreditCard },
   { href: '/reports', label: 'Reports', icon: LineChart },
   { href: '/expenses', label: 'Expenses', icon: Receipt },
+  { href: '/ai-reports', label: 'AI Reports', icon: BrainCircuit },
 ];
 
 const bottomNavItemsBase = [
